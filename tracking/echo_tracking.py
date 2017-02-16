@@ -783,30 +783,3 @@ for infile_name in file_list:
     
     time_elapsed = datetime.datetime.now() - start_time
     print('time elapsed', np.round(time_elapsed.seconds/60), 'minutes')
-    
-
-
-        
-
-            
-        
-
-        
-    
-    
-    
-
-    
-        
-    
-
-        
-    
-
-
-   
-    
-    
-        
-
-    
