@@ -7,6 +7,7 @@ from scipy import ndimage, optimize
 
 
 #def plot_objects_label(labeled_image, xvalues, yvalues):
+    
 
 def get_filteredFrame(ncfile, scan_num, min_size):
     echo_height = get_convHeight(ncfile, scan_num)
@@ -54,9 +55,12 @@ def get_vertical_class(conv_height):
     return conv_height
     
     
-#def change_baseEpoch(time_seconds, From_epoch, To_epoch=):
-    
-    
+def change_baseEpoch(time_seconds, From_epoch):
+    To_epoch = base_epoch
+    epoch_diff = From_epoch - To_epoch
+    epoch_diff_seconds = epoch_diff.days * 86400
+    time_newEpoch = time_seconds + epoch_diff_seconds
+    return time_newEpoch
 
 def get_matchPairs(image1, image2):
     nObjects1 = np.max(image1)
@@ -98,8 +102,6 @@ def locate_allObjects(image1, image2):
         obj1_extent = get_objExtent(image1, obj_id1)
         shift = get_std_flowVector(obj1_extent, image1, image2,
                                    flow_margin, stdFlow_mag)
-        print(obj_id1, obj1_extent['obj_center'])
-        print(shift)
         
         if 'current_objects' in globals():
             shift = correct_shift(shift, current_objects, obj_id1)
@@ -354,7 +356,12 @@ def create_outNC(ofile, max_obs):
     #dim_time.longname = 'time of the scan'
     outNC.createDimension('stat', 4)
     #dim_stat.longname = 'object survival vector; lived, died, born, total'
-    
+    outNC.createVariable(
+        'unique_id', datatype='i', dimensions=('echo_id'), fill_value=0
+        )
+    outNC.createVariable(
+        'time_utc', datatype='i', dimensions=('time'), fill_value=0
+        )
     outNC.createVariable(
         'survival', datatype='i', dimensions=('stat', 'time'),
         fill_value=-999, complevel=deflat
@@ -485,7 +492,7 @@ def check_merging(dead_obj_id1, current_objects, obj_props):
 
 def write_survival(outNC, survival_stat, time, scan):
     outNC.variables['survival'][:5, scan] = survival_stat
-    outNC.variables['record_time'][scan] = time
+    outNC.variables['time_utc'][scan] = time
 
 
 def init_uids(first_frame, second_frame, pairs):
@@ -494,7 +501,7 @@ def init_uids(first_frame, second_frame, pairs):
     id1 = np.arange(nobj) + 1
     uid = next_uid(count=nobj)
     id2 = pairs
-    obs_num = np.ones(nobj, dtype = 'i')
+    obs_num = np.zeros(nobj, dtype = 'i')
     origin = np.zeros(nobj, dtype = 'i')
     
     current_objects = {'id1':id1, 'uid':uid, 'id2':id2,
@@ -514,11 +521,10 @@ def attach_xyheads(frame1, frame2, current_objects):
     for obj in range(nobj):
         if ((current_objects['id1'][obj] > 0)
             and (current_objects['id2'][obj] > 0)):
-            
             center1 = get_objectCenter(current_objects['id1'][obj], frame1)
-            center2 = get_objectCenter(current_objects['id1'][obj], frame2)
-            xhead = np.ma.append(xhead, center1[0] - center2[0])
-            yhead = np.ma.append(yhead, center1[1] - center2[1])
+            center2 = get_objectCenter(current_objects['id2'][obj], frame2)
+            xhead = np.ma.append(xhead, center2[0] - center1[0])
+            yhead = np.ma.append(yhead, center2[1] - center1[1])
         else:
             xhead = np.ma.append(xhead, NA)
             yhead = np.ma.append(yhead, NA)
@@ -550,7 +556,7 @@ def update_current_objects(frame1, frame2, pairs, old_objects):
             origin = np.append(origin, old_objects['origin'][obj_index])
         else:
             uid = np.append(uid, next_uid())
-            obs_num = np.append(obs_num, 1)
+            obs_num = np.append(obs_num, 0)
             origin = np.append(origin,
                                get_origin_uid(obj, frame1, old_objects))
             
@@ -641,8 +647,8 @@ def get_objectProp(image1, class1, xyDist):
     for obj in np.arange(nobj) + 1:
         obj_index = np.argwhere(image1 == obj)
         id1 = np.append(id1, obj)
-        x = np.append(x, np.floor(np.median(obj_index[:, 0])))
-        y = np.append(y, np.floor(np.median(obj_index[:, 1])))
+        x = np.append(x, np.floor(np.median(obj_index[:, 1])))
+        y = np.append(y, np.floor(np.median(obj_index[:, 0])))
         area = np.append(area, len(obj_index[:, 1]))
         
         obj_class = get_object_vertProfile(image1, class1, obj_label = obj)
@@ -675,14 +681,15 @@ def survival_stats(pairs, num_obj2):
     obj_lived = len(pairs[pairs > 0])
     obj_died = len(pairs) - obj_lived
     obj_born = num_obj2 - obj_lived
-    return {'lived':obj_lived, 'died':obj_died,
-            'born':obj_born, 'total':num_obj2}
+    #return {'lived':obj_lived, 'died':obj_died,
+    #        'born':obj_born, 'total':num_obj2}
+    return [obj_lived, obj_died, obj_born, num_obj2]
             
 
 #______________________________________________________________________________
 #________________________Settings for tracking method__________________________
 start_time = datetime.datetime.now()
-
+base_epoch = datetime.datetime(1970, 1, 1)
 search_margin = 4
 flow_margin = 4
 stdFlow_mag = 5
@@ -696,11 +703,11 @@ max_disparity = 15
 file_list = ['/home/mhpicel/R Scripts/cpol_2D_2004-11-03.nc']
 
 for infile_name in file_list:
-    outfile_name = '/home/mhpicel/Desktop/test_tracks_py.nc'
+    outfile_name = '/home/mhpicel/Desktop/test_tracks_py2.nc'
     print('Opening output file', outfile_name)
     
     outNC = create_outNC(outfile_name, max_obs)
-    uid_counter = 0
+    uid_counter = -1
     
     #read x, y and time from the file
     ncfile = Dataset(infile_name, 'r', format='NETCDF4')
@@ -708,11 +715,11 @@ for infile_name in file_list:
     y = ncfile.variables['y'][:]
     
     time = ncfile.variables['time'][:]
-    #time = change_baseEpoch(time, From_epoch=)
+    time = change_baseEpoch(time, From_epoch=datetime.datetime(2004, 1, 1))
     
-    start_scan = 1
-    #end_scan = len(time)
-    end_scan = 5
+    start_scan = 0
+    end_scan = len(time)-1
+    #end_scan = 50
     
     newRain = True
     
@@ -778,7 +785,7 @@ for infile_name in file_list:
     print('closing files')
     ncfile.close()   
     #write unlimited dim and close
-    dim_echo[0:uid_counter] = np.arange(uid_counter) + 1
+    outNC.variables['unique_id'][0:uid_counter] = np.arange(uid_counter) + 1
     outNC.close()
     
     time_elapsed = datetime.datetime.now() - start_time
