@@ -46,11 +46,11 @@ def clear_smallEchoes(label_image, min_size):
     
 def get_vertical_class(conv_height):
     min_level = (5, 15, 31)
-    max_level = (14, 20, 40)
+    max_level = (14, 30, 40)
     
     for i, val in enumerate(min_level):
         conv_height[(conv_height >= min_level[i]) &
-                    (conv_height <= max_level[i])] = i
+                    (conv_height <= max_level[i])] = i + 1
                     
     return conv_height
     
@@ -523,8 +523,8 @@ def attach_xyheads(frame1, frame2, current_objects):
             and (current_objects['id2'][obj] > 0)):
             center1 = get_objectCenter(current_objects['id1'][obj], frame1)
             center2 = get_objectCenter(current_objects['id2'][obj], frame2)
-            xhead = np.ma.append(xhead, center2[0] - center1[0])
-            yhead = np.ma.append(yhead, center2[1] - center1[1])
+            xhead = np.ma.append(xhead, center1[0] - center2[0])
+            yhead = np.ma.append(yhead, center1[1] - center2[1])
         else:
             xhead = np.ma.append(xhead, NA)
             yhead = np.ma.append(yhead, NA)
