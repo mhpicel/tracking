@@ -1,12 +1,14 @@
 import datetime
-import matplotlib.pyplot as plt
-import numpy as np
 import os
-import pandas as pd
-import pyart
 import string
-from scipy import ndimage, optimize
+
+import matplotlib.pyplot as plt
 from matplotlib import animation
+import numpy as np
+import pandas as pd
+from scipy import ndimage, optimize
+
+import pyart
 
 
 def get_grid(file):
@@ -20,7 +22,7 @@ def get_grid(file):
     return grid.fields['reflectivity']['data']
 
 
-def get_vertProjection(grid, thresh=40):
+def get_vert_projection(grid, thresh=40):
     """Returns binary vertical projection from grid."""
     projection = np.empty_like(grid[0, :, :])
     for i in range(grid.shape[1]):
@@ -29,49 +31,49 @@ def get_vertProjection(grid, thresh=40):
     return projection
 
 
-def get_filteredFrame(grid, min_size, thresh):
+def get_filtered_frame(grid, min_size, thresh):
     """Returns a labeled frame from gridded radar data. Smaller objects are
     removed and the rest are labeled."""
-    echo_height = get_vertProjection(grid, thresh)
+    echo_height = get_vert_projection(grid, thresh)
     labeled_echo = ndimage.label(echo_height)[0]
-    frame = clear_smallEchoes(labeled_echo, min_size)
+    frame = clear_small_echoes(labeled_echo, min_size)
     return frame
 
 
-def clear_smallEchoes(label_image, min_size):
+def clear_small_echoes(label_image, min_size):
     """Takes in binary image and clears objects less than min_size."""
     flat_image = pd.Series(label_image.flatten())
     flat_image = flat_image[flat_image > 0]
     size_table = flat_image.value_counts(sort=False)
-    onePix_objects = size_table.keys()[size_table < min_size]
+    small_objects = size_table.keys()[size_table < min_size]
 
-    for obj in onePix_objects:
+    for obj in small_objects:
         label_image[label_image == obj] = 0
     label_image = ndimage.label(label_image)
     return label_image[0]
 
 
-def change_baseEpoch(time_seconds, From_epoch):
-    """Changes base epoch of time_second from From_epoch to global variable
-    base_epoch."""
-    To_epoch = base_epoch
-    epoch_diff = From_epoch - To_epoch
+def change_base_epoch(time_seconds, from_epoch):
+    """Changes base epoch of time_second from from_epoch to global variable
+    BASE_EPOCH."""
+    to_epoch = BASE_EPOCH
+    epoch_diff = from_epoch - to_epoch
     epoch_diff_seconds = epoch_diff.days * 86400
-    time_newEpoch = time_seconds + epoch_diff_seconds
-    return time_newEpoch
+    time_new = time_seconds + epoch_diff_seconds
+    return time_new
 
 
-def get_matchPairs(image1, image2, global_shift):
+def get_pairs(image1, image2, global_shift):
     """Given two images, this function identifies the matching objects and
     pairs them appropriately. See disparity function."""
-    nObjects1 = np.max(image1)
-    nObjects2 = np.max(image2)
+    nobj1 = np.max(image1)
+    nobj2 = np.max(image2)
 
-    if nObjects1 == 0:
+    if nobj1 == 0:
         print('No echoes found in the first scan.')
         return
-    elif nObjects2 == 0:
-        zero_pairs = np.zeros(nObjects1)
+    elif nobj2 == 0:
+        zero_pairs = np.zeros(nobj1)
         return zero_pairs
 
     obj_match = locate_allObjects(image1, image2, global_shift)
@@ -85,7 +87,7 @@ def match_pairs(obj_match):
     pairs = optimize.linear_sum_assignment(obj_match)
 
     for id1 in pairs[0]:
-        if obj_match[id1, pairs[1][id1]] > max_disparity:
+        if obj_match[id1, pairs[1][id1]] > MAX_DISPARITY:
             pairs[1][id1] = -1  # -1 indicates the object has died
 
     pairs = pairs[1] + 1  # ids in current_objects are 1-indexed
@@ -95,20 +97,20 @@ def match_pairs(obj_match):
 def locate_allObjects(image1, image2, global_shift):
     """Matches all the objects in image1 to objects in image2. This is the main
     function called on a pair of images."""
-    nObjects1 = np.max(image1)
-    nObjects2 = np.max(image2)
+    nobj1 = np.max(image1)
+    nobj2 = np.max(image2)
 
-    if (nObjects2 == 0) or (nObjects1 == 0):
+    if (nobj2 == 0) or (nobj1 == 0):
         print('No echoes to track!')
         return
 
-    obj_match = np.full((nObjects1, np.max((nObjects1, nObjects2))),
-                        large_num, dtype='f')
+    obj_match = np.full((nobj1, np.max((nobj1, nobj2))),
+                        LARGE_NUM, dtype='f')
 
-    for obj_id1 in np.arange(nObjects1) + 1:
+    for obj_id1 in np.arange(nobj1) + 1:
         obj1_extent = get_objExtent(image1, obj_id1)
-        shift = get_std_flowVector(obj1_extent, image1, image2,
-                                   flow_margin, stdFlow_mag)
+        shift = get_std_flow(obj1_extent, image1, image2,
+                             FLOW_MARGIN, STD_FLOW_MAG)
         if shift is None:
             global correction_record
             correction_record['case4'] += 1
@@ -120,19 +122,19 @@ def locate_allObjects(image1, image2, global_shift):
         else:
             shift = global_shift
 
-        search_box = predict_searchExtent(obj1_extent, shift, search_margin)
-        search_box = check_searchBox(search_box, image2.shape)
+        search_box = predict_searchExtent(obj1_extent, shift, SEARCH_MARGIN)
+        search_box = check_search_box(search_box, image2.shape)
         obj_found = find_objects(search_box, image2)
         disparity = get_disparity_all(obj_found, image2,
                                       search_box, obj1_extent)
-        obj_match = save_objMatch(obj_id1, obj_found, disparity, obj_match)
+        obj_match = save_obj_match(obj_id1, obj_found, disparity, obj_match)
 
     return obj_match
 
 
 def correct_shift(this_shift, current_objects, object_id1, global_shift):
     """Takes in flow vector based on local phase correlation (see
-    get_std_flowVector) and compares it to the last headings of the object and
+    get_std_flow) and compares it to the last headings of the object and
     the global_shift vector for that timestep. Corrects accordingly.
     Note: At the time of this function call, current_objects has not yet been
     updated for the current frame1 and frame2, so the id2s in current_objects
@@ -158,14 +160,14 @@ def correct_shift(this_shift, current_objects, object_id1, global_shift):
 
     global correction_record
     if len(last_heads) == 0:
-        if any(abs(this_shift - global_shift) > max_shift_disp):
+        if any(abs(this_shift - global_shift) > MAX_SHIFT_DISP):
             correction_record['case0'] += 1
             return global_shift
         correction_record['case1'] += 1
         return (this_shift + global_shift)/2
 
-    elif any(abs(this_shift - last_heads) > max_shift_disp):
-        if any(abs(this_shift - global_shift) > max_shift_disp):
+    elif any(abs(this_shift - last_heads) > MAX_SHIFT_DISP):
+        if any(abs(this_shift - global_shift) > MAX_SHIFT_DISP):
             correction_record['case2'] += 1
             return last_heads
         correction_record['case3'] += 1
@@ -193,32 +195,32 @@ def get_objExtent(labeled_image, obj_label):
     return obj_extent
 
 
-def get_objAmbientFlow(obj_extent, img1, img2, margin):
+def get_ambient_flow(obj_extent, img1, img2, margin):
     """Takes in object extent and two images and returns ambient flow. Margin
     is the additional region around the object used to compute the flow
     vectors."""
-    r1 = obj_extent['obj_center'][0] - obj_extent['obj_radius'] - margin
-    r2 = obj_extent['obj_center'][0] + obj_extent['obj_radius'] + margin
-    c1 = obj_extent['obj_center'][1] - obj_extent['obj_radius'] - margin
-    c2 = obj_extent['obj_center'][1] + obj_extent['obj_radius'] + margin
-    r1 = np.int(r1)
-    r2 = np.int(r2)
-    c1 = np.int(c1)
-    c2 = np.int(c2)
+    row_lb = obj_extent['obj_center'][0] - obj_extent['obj_radius'] - margin
+    row_ub = obj_extent['obj_center'][0] + obj_extent['obj_radius'] + margin
+    col_lb = obj_extent['obj_center'][1] - obj_extent['obj_radius'] - margin
+    col_ub = obj_extent['obj_center'][1] + obj_extent['obj_radius'] + margin
+    row_lb = np.int(row_lb)
+    row_ub = np.int(row_ub)
+    col_lb = np.int(col_lb)
+    col_ub = np.int(col_ub)
 
     dims = img1.shape
-    if (r1 <= 0) or (c1 <= 0) or (r2 > dims[0]) or (c2 > dims[1]):
+    if row_lb <= 0 or col_lb <= 0 or row_ub > dims[0] or col_ub > dims[1]:
         return None
 
-    flow_region1 = img1[r1:r2+1, c1:c2+1]
-    flow_region2 = img2[r1:r2+1, c1:c2+1]
-    return fft_flowVectors(flow_region1, flow_region2)
+    flow_region1 = img1[row_lb:row_ub+1, col_lb:col_ub+1]
+    flow_region2 = img2[row_lb:row_ub+1, col_lb:col_ub+1]
+    return fft_flowvectors(flow_region1, flow_region2)
 
 
-def get_std_flowVector(obj_extent, img1, img2, margin, magnitude):
-    """Alternative to get_objAmbientFlow. Flow vector's magnitude is clipped to
+def get_std_flow(obj_extent, img1, img2, margin, magnitude):
+    """Alternative to get_ambient_flow. Flow vector's magnitude is clipped to
     given magnitude."""
-    shift = get_objAmbientFlow(obj_extent, img1, img2, margin)
+    shift = get_ambient_flow(obj_extent, img1, img2, margin)
     if shift is None:
         return None
 
@@ -227,30 +229,30 @@ def get_std_flowVector(obj_extent, img1, img2, margin, magnitude):
     return shift
 
 
-def fft_flowVectors(im1, im2):
+def fft_flowvectors(im1, im2):
     """Estimates flow vectors in two images using cross covariance."""
     if (np.max(im1) == 0) or (np.max(im2) == 0):
         return None
 
-    crossCov = fft_crossCov(im1, im2)
-    sigma = (1/8) * min(crossCov.shape)
-    cov_smooth = ndimage.filters.gaussian_filter(crossCov, sigma)
+    crosscov = fft_crosscov(im1, im2)
+    sigma = (1/8) * min(crosscov.shape)
+    cov_smooth = ndimage.filters.gaussian_filter(crosscov, sigma)
     dims = im1.shape
     pshift = np.argwhere(cov_smooth == np.max(cov_smooth))[0]
     pshift = (pshift+1) - (dims[0]/2)
     return pshift
 
 
-def fft_crossCov(im1, im2):
+def fft_crosscov(im1, im2):
     """Computes cross correlation matrix using FFT method."""
     fft1_conj = np.conj(np.fft.fft2(im1))
     fft2 = np.fft.fft2(im2)
     normalize = abs(fft2*fft1_conj)
     normalize[normalize == 0] = 1  # prevent divide by zero error
-    C = (fft2*fft1_conj)/normalize
-    crossCov = np.fft.ifft2(C)
-    crossCov = np.real(crossCov)
-    return fft_shift(crossCov)
+    cross_power_spectrum = (fft2*fft1_conj)/normalize
+    crosscov = np.fft.ifft2(cross_power_spectrum)
+    crosscov = np.real(crosscov)
+    return fft_shift(crosscov)
 
 
 def fft_shift(fft_mat):
@@ -260,12 +262,12 @@ def fft_shift(fft_mat):
     if type(fft_mat) is np.ndarray:
         rd2 = np.int(fft_mat.shape[0]/2)
         cd2 = np.int(fft_mat.shape[1]/2)
-        q1 = fft_mat[:rd2, :cd2]
-        q2 = fft_mat[:rd2, cd2:]
-        q3 = fft_mat[rd2:, cd2:]
-        q4 = fft_mat[rd2:, :cd2]
-        centered_t = np.concatenate((q4, q1), axis=0)
-        centered_b = np.concatenate((q3, q2), axis=0)
+        quad1 = fft_mat[:rd2, :cd2]
+        quad2 = fft_mat[:rd2, cd2:]
+        quad3 = fft_mat[rd2:, cd2:]
+        quad4 = fft_mat[rd2:, :cd2]
+        centered_t = np.concatenate((quad4, quad1), axis=0)
+        centered_b = np.concatenate((quad3, quad2), axis=0)
         centered = np.concatenate((centered_b, centered_t), axis=1)
         return centered
     else:
@@ -273,10 +275,10 @@ def fft_shift(fft_mat):
         return
 
 
-def get_globalShift(im1, im2, magnitude):
+def get_global_shift(im1, im2, magnitude):
     """Returns standardazied global shift vector. im1 and im2 are full frames
     of raw DBZ values."""
-    shift = fft_flowVectors(im1, im2)
+    shift = fft_flowvectors(im1, im2)
     shift[shift > magnitude] = magnitude
     shift[shift < -magnitude] = -magnitude
     return shift
@@ -300,7 +302,7 @@ def predict_searchExtent(obj1_extent, shift, search_radius):
             'center_pred': shifted_center, 'valid': True}
 
 
-def check_searchBox(search_box, img_dims):
+def check_search_box(search_box, img_dims):
     """Checks if search_box is within the boundaries of the frame. Clips to
     edges of frame if out of bounds. Marks as invalid if too small."""
     if search_box['x1'] < 0:
@@ -332,13 +334,13 @@ def find_objects(search_box, image2):
 def get_disparity_all(obj_found, image2, search_box, obj1_extent):
     """Returns disparities of all objects found within the search box."""
     if np.max(obj_found) <= 0:
-        disparity = np.array([large_num])
+        disparity = np.array([LARGE_NUM])
     else:
         obj_found = obj_found[obj_found > 0]
         if len(obj_found) == 1:
             disparity = get_disparity(obj_found, image2,
                                       search_box, obj1_extent)
-            if(disparity <= 3):
+            if disparity <= 3:
                 disparity = np.array([0])
         else:
             disparity = get_disparity(obj_found, image2,
@@ -346,10 +348,10 @@ def get_disparity_all(obj_found, image2, search_box, obj1_extent):
     return disparity
 
 
-def save_objMatch(obj_id1, obj_found, disparity, obj_match):
+def save_obj_match(obj_id1, obj_found, disparity, obj_match):
     """Saves disparity values in obj_match matrix. If disparity is greater than
-    max_disparity, saves a large number."""
-    disparity[disparity > max_disparity] = large_num
+    MAX_DISPARITY, saves a large number."""
+    disparity[disparity > MAX_DISPARITY] = LARGE_NUM
     if np.max(obj_found) > 0:
         obj_found = obj_found[obj_found > 0]
         obj_found = obj_found - 1
@@ -389,33 +391,33 @@ def euclidean_dist(vec1, vec2):
     return dist
 
 
-def get_sizeChange(x, y):
+def get_sizeChange(size1, size2):
     """Returns change in size of an echo as the ratio of the larger size to the
     smaller, minus 1."""
-    if (x < 5) and (y < 5):
-        return(0)
-    elif x >= y:
-        return (x/y - 1)
+    if (size1 < 5) and (size2 < 5):
+        return 0
+    elif size1 >= size2:
+        return size1/size2 - 1
     else:
-        return(y/x - 1)
+        return size2/size1 - 1
 
 
-def write_tracks(scan, current_objects, obj_props):
+def write_tracks(old_tracks, scan, current_objects, obj_props):
     """Writes x and y grid position to tracks dataframe for each object present
     in scan."""
     print('writing track', scan)
 
     nobj = len(obj_props['id1'])
     scan_num = [scan-1] * nobj
-    x = obj_props['x']
-    y = obj_props['y']
+    x_pos = obj_props['x']
+    y_pos = obj_props['y']
     uid = current_objects['uid']
 
-    new_tracks = pd.DataFrame({'scan': scan_num, 'x': x, 'y': y, 'uid': uid})
-    global tracks
-    tracks = tracks.append(new_tracks)
+    new_tracks = pd.DataFrame({'scan': scan_num, 'x': x_pos,
+                               'y': y_pos, 'uid': uid})
+    tracks = old_tracks.append(new_tracks)
     print(new_tracks)
-
+    return tracks
 
 # def write_duration(outNC, current_objects):
 #    nobj = len(current_objects['id1'])
@@ -487,25 +489,25 @@ def attach_xyheads(frame1, frame2, current_objects):
     nobj = len(current_objects['uid'])
     xhead = np.ma.empty(0)
     yhead = np.ma.empty(0)
-    NA = np.ma.array([-999], mask=[True])
+    na_array = np.ma.array([-999], mask=[True])
 
     for obj in range(nobj):
         if ((current_objects['id1'][obj] > 0) and
                 (current_objects['id2'][obj] > 0)):
-            center1 = get_objectCenter(current_objects['id1'][obj], frame1)
-            center2 = get_objectCenter(current_objects['id2'][obj], frame2)
+            center1 = get_object_center(current_objects['id1'][obj], frame1)
+            center2 = get_object_center(current_objects['id2'][obj], frame2)
             xhead = np.ma.append(xhead, center2[0] - center1[0])
             yhead = np.ma.append(yhead, center2[1] - center1[1])
         else:
-            xhead = np.ma.append(xhead, NA)
-            yhead = np.ma.append(yhead, NA)
+            xhead = np.ma.append(xhead, na_array)
+            yhead = np.ma.append(yhead, na_array)
 
     current_objects['xhead'] = xhead
     current_objects['yhead'] = yhead
     return current_objects
 
 
-def get_objectCenter(obj_id, labeled_image):
+def get_object_center(obj_id, labeled_image):
     """Returns index of center pixel of the given object id from labeled image.
     The center is calculated as the median pixel of the object extent; it is
     not a true centroid."""
@@ -562,7 +564,7 @@ def get_origin_uid(obj, frame1, old_objects):
     return origin_uid
 
 
-def find_origin(id1_newObj, frame1):
+def find_origin(id1_new, frame1):
     """This function checks near by objects in the frame for the given new-born
     object. Returns uid of an object that existed before the new born object,
     has a comparable or larger size, and is within a predefined distance.
@@ -570,10 +572,10 @@ def find_origin(id1_newObj, frame1):
     if np.max(frame1) == 1:
         return None
 
-    object_ind = np.argwhere(frame1 == id1_newObj)
+    object_ind = np.argwhere(frame1 == id1_new)
     object_size = object_ind.shape[0]
 
-    neighbour_ind = np.argwhere((frame1 > 0) & (frame1 != id1_newObj))
+    neighbour_ind = np.argwhere((frame1 > 0) & (frame1 != id1_new))
     neighbour_size = neighbour_ind.shape[0]
 
     neighbour_dist = np.array([])
@@ -590,7 +592,7 @@ def find_origin(id1_newObj, frame1):
             neighbour_id = np.append(neighbour_id,
                                      frame1[pix_id[0], pix_id[1]])
 
-    nearest_object_id = neighbour_id[neighbour_dist < near_thresh]
+    nearest_object_id = neighbour_id[neighbour_dist < NEAR_THRESH]
     # the_nearest_object = neighbour_id[neighbour_dist == min(neighbour_dist)]
 
     if len(nearest_object_id) == 0:
@@ -605,7 +607,7 @@ def find_origin(id1_newObj, frame1):
     big_ratio_obj = neigh_objects[size_ratio == max(size_ratio)]
     big_diff_obj = neigh_objects[size_diff == max(size_diff)]
 
-    if(big_ratio_obj == big_diff_obj):
+    if big_ratio_obj == big_diff_obj:
         return big_diff_obj[0]
     else:
         return big_diff_obj[0]
@@ -663,19 +665,17 @@ def survival_stats(pairs, num_obj2):
 
 # _____________________________________________________________________________
 # _______________________settings for tracking method__________________________
-start_time = datetime.datetime.now()
-base_epoch = datetime.datetime(1970, 1, 1)
-dbz_thresh = 24
-min_size = 50
-max_shift_disp = 8
-near_thresh = 4
-search_margin = 10
-flow_margin = 20
-stdFlow_mag = 20
-min_signif_movement = 2
-large_num = 1000
-max_obs = 60
-max_disparity = 35
+START_TIME = datetime.datetime.now()
+BASE_EPOCH = datetime.datetime(1970, 1, 1)
+DBZ_THRESH = 24
+MIN_SIZE = 50
+MAX_SHIFT_DISP = 8
+NEAR_THRESH = 4
+SEARCH_MARGIN = 10
+FLOW_MARGIN = 20
+STD_FLOW_MAG = 20
+LARGE_NUM = 1000
+MAX_DISPARITY = 35
 # _____________________________________________________________________________
 # _____________________read radar files and generate tracks____________________
 # get files from local directory
@@ -704,8 +704,8 @@ shift_record = pd.DataFrame({'shift_x': [],
                              'head_y': np.ma.array([])})
 
 start_scan = 10
-end_scan = len(file_list)-1
-# end_scan = 50
+# end_scan = len(file_list)-1
+end_scan = 25
 
 newRain = True
 if 'current_objects' in globals():
@@ -715,7 +715,7 @@ print('Total scans in this file', end_scan - start_scan + 1)
 
 grid2 = get_grid(local_dir_data[start_scan])
 raw2 = grid2[3, :, :]
-frame2 = get_filteredFrame(grid2, min_size, dbz_thresh)
+frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
 tracks = pd.DataFrame()
 
 for scan in range(start_scan + 1, end_scan + 1):
@@ -725,7 +725,7 @@ for scan in range(start_scan + 1, end_scan + 1):
 
     grid2 = get_grid(local_dir_data[scan])
     raw2 = grid2[3, :, :]
-    frame2 = get_filteredFrame(grid2, min_size, dbz_thresh)
+    frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
 
     if scan == end_scan:
         frame2 = np.zeros_like(frame2)
@@ -737,8 +737,8 @@ for scan in range(start_scan + 1, end_scan + 1):
             del current_objects
         continue
 
-    global_shift = get_globalShift(raw1, raw2, stdFlow_mag)
-    pairs = get_matchPairs(frame1, frame2, global_shift)
+    global_shift = get_global_shift(raw1, raw2, STD_FLOW_MAG)
+    pairs = get_pairs(frame1, frame2, global_shift)
     obj_props = get_objectProp(frame1)
 
     if newRain:
@@ -748,19 +748,19 @@ for scan in range(start_scan + 1, end_scan + 1):
         current_objects = update_current_objects(frame1, frame2,
                                                  pairs, current_objects)
 
-    write_tracks(scan, current_objects, obj_props)
+    tracks = write_tracks(tracks, scan, current_objects, obj_props)
     # scan loop end
 
 
 shift_record.set_index(['scan', 'uid'], inplace=True)
 shift_record.sort_index(inplace=True)
-time_elapsed = datetime.datetime.now() - start_time
+time_elapsed = datetime.datetime.now() - START_TIME
 print('\n')
 print('closing files')
 print('time elapsed', np.round(time_elapsed.seconds/60), 'minutes')
 # _____________________________________________________________________________
 # ___________________________generate animation________________________________
-anim_filename = 'tracks_test3.gif'
+anim_filename = 'tracks_maint.gif'
 
 
 def animate_grid(nframe):
@@ -772,10 +772,10 @@ def animate_grid(nframe):
 
     radar = pyart.io.read(fname)
     grid = pyart.map.grid_from_radars(
-            radar, grid_shape=(34, 240, 240),
-            grid_limits=((0, 17000), (-60000, 60000), (-60000, 60000)),
-            fields=['reflectivity'], gridding_algo="map_gates_to_grid",
-            weighting_function='BARNES')
+        radar, grid_shape=(34, 240, 240),
+        grid_limits=((0, 17000), (-60000, 60000), (-60000, 60000)),
+        fields=['reflectivity'], gridding_algo="map_gates_to_grid",
+        weighting_function='BARNES')
     display = pyart.graph.GridMapDisplay(grid)
     ax = fig_grid.add_subplot(111)
     display.plot_basemap(lat_lines=np.arange(30, 46, .2),
