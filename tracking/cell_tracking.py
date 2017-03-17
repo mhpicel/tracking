@@ -1,7 +1,5 @@
 import datetime
-import os
 import string
-
 import matplotlib.pyplot as plt
 from matplotlib import animation
 import numpy as np
@@ -9,6 +7,29 @@ import pandas as pd
 from scipy import ndimage, optimize
 
 import pyart
+
+# Settings for Tracking Method
+BASE_EPOCH = datetime.datetime(1970, 1, 1)
+LARGE_NUM = 1000
+DBZ_THRESH = 24
+MIN_SIZE = 50
+NEAR_THRESH = 4
+SEARCH_MARGIN = 8
+FLOW_MARGIN = 20
+MAX_DISPARITY = 25
+MAX_FLOW_MAG = 20
+MAX_SHIFT_DISP = 8
+
+
+def print_params():
+    """Prints tracking parameters."""
+    print('DBZ_THRESH:', DBZ_THRESH)
+    print('MIN_SIZE:', MIN_SIZE)
+    print('SEARCH_MARGIN:', SEARCH_MARGIN)
+    print('FLOW_MARGIN:', FLOW_MARGIN)
+    print('MAX_DISPARITY:', MAX_DISPARITY)
+    print('MAX_FLOW_MAG:', MAX_FLOW_MAG)
+    print('MAX_SHIFT_DISP:', MAX_SHIFT_DISP)
 
 
 def get_grid(file):
@@ -53,17 +74,17 @@ def clear_small_echoes(label_image, min_size):
     return label_image[0]
 
 
-def change_base_epoch(time_seconds, from_epoch):
-    """Changes base epoch of time_second from from_epoch to global variable
-    BASE_EPOCH."""
-    to_epoch = BASE_EPOCH
-    epoch_diff = from_epoch - to_epoch
-    epoch_diff_seconds = epoch_diff.days * 86400
-    time_new = time_seconds + epoch_diff_seconds
-    return time_new
+# def change_base_epoch(time_seconds, from_epoch):
+#    """Changes base epoch of time_second from from_epoch to global variable
+#    BASE_EPOCH."""
+#    to_epoch = BASE_EPOCH
+#    epoch_diff = from_epoch - to_epoch
+#    epoch_diff_seconds = epoch_diff.days * 86400
+#    time_new = time_seconds + epoch_diff_seconds
+#    return time_new
 
 
-def get_pairs(image1, image2, global_shift):
+def get_pairs(image1, image2, global_shift, current_objects, record):
     """Given two images, this function identifies the matching objects and
     pairs them appropriately. See disparity function."""
     nobj1 = np.max(image1)
@@ -74,11 +95,15 @@ def get_pairs(image1, image2, global_shift):
         return
     elif nobj2 == 0:
         zero_pairs = np.zeros(nobj1)
-        return zero_pairs
+        return zero_pairs, record
 
-    obj_match = locate_allObjects(image1, image2, global_shift)
+    obj_match, record = locate_allObjects(image1,
+                                          image2,
+                                          global_shift,
+                                          current_objects,
+                                          record)
     pairs = match_pairs(obj_match)
-    return pairs
+    return pairs, record
 
 
 def match_pairs(obj_match):
@@ -94,7 +119,7 @@ def match_pairs(obj_match):
     return pairs
 
 
-def locate_allObjects(image1, image2, global_shift):
+def locate_allObjects(image1, image2, global_shift, current_objects, record):
     """Matches all the objects in image1 to objects in image2. This is the main
     function called on a pair of images."""
     nobj1 = np.max(image1)
@@ -110,17 +135,13 @@ def locate_allObjects(image1, image2, global_shift):
     for obj_id1 in np.arange(nobj1) + 1:
         obj1_extent = get_objExtent(image1, obj_id1)
         shift = get_std_flow(obj1_extent, image1, image2,
-                             FLOW_MARGIN, STD_FLOW_MAG)
+                             FLOW_MARGIN, MAX_FLOW_MAG)
         if shift is None:
-            global correction_record
-            correction_record['case4'] += 1
+            record.count_case(5)
             shift = global_shift
 
-        if 'current_objects' in globals():
-            shift = correct_shift(shift, current_objects, obj_id1,
-                                  global_shift)
-        else:
-            shift = global_shift
+        shift, record = correct_shift(shift, current_objects, obj_id1,
+                                      global_shift, record)
 
         search_box = predict_searchExtent(obj1_extent, shift, SEARCH_MARGIN)
         search_box = check_search_box(search_box, image2.shape)
@@ -129,53 +150,48 @@ def locate_allObjects(image1, image2, global_shift):
                                       search_box, obj1_extent)
         obj_match = save_obj_match(obj_id1, obj_found, disparity, obj_match)
 
-    return obj_match
+    return obj_match, record
 
 
-def correct_shift(this_shift, current_objects, object_id1, global_shift):
+def correct_shift(pc_shift, current_objects, obj_id1, global_shift, record):
     """Takes in flow vector based on local phase correlation (see
     get_std_flow) and compares it to the last headings of the object and
     the global_shift vector for that timestep. Corrects accordingly.
     Note: At the time of this function call, current_objects has not yet been
     updated for the current frame1 and frame2, so the id2s in current_objects
     correspond to the objects in the current frame1."""
-    obj_index = current_objects['id2'] == object_id1
-    last_heads = np.ma.append(current_objects['xhead'][obj_index],
-                              current_objects['yhead'][obj_index])
 
-    global shift_record
-    new_record = pd.DataFrame({'scan': [np.int(scan - 1)],
-                               'uid': ['new'],
-                               'shift_x': [this_shift[0]],
-                               'shift_y': [this_shift[1]],
-                               'head_x': [-999],
-                               'head_y': [-999],
-                               'global_x': [global_shift[0]],
-                               'global_y': [global_shift[1]]})
-    if len(last_heads > 0):
-        new_record['head_x'] = [last_heads[0]]
-        new_record['head_y'] = [last_heads[1]]
-        new_record['uid'] = current_objects['uid'][obj_index]
-    shift_record = shift_record.append(new_record)
+    if current_objects is None:
+        last_heads = ()
+    else:
+        obj_index = current_objects['id2'] == obj_id1
+        last_heads = np.ma.append(current_objects['xhead'][obj_index],
+                                  current_objects['yhead'][obj_index])
 
-    global correction_record
     if len(last_heads) == 0:
-        if any(abs(this_shift - global_shift) > MAX_SHIFT_DISP):
-            correction_record['case0'] += 1
-            return global_shift
-        correction_record['case1'] += 1
-        return (this_shift + global_shift)/2
+        if any(abs(pc_shift - global_shift) > MAX_SHIFT_DISP):
+            case = 0
+            corrected_shift = global_shift
+        else:
+            case = 1
+            corrected_shift = (pc_shift + global_shift)/2
 
-    elif any(abs(this_shift - last_heads) > MAX_SHIFT_DISP):
-        if any(abs(this_shift - global_shift) > MAX_SHIFT_DISP):
-            correction_record['case2'] += 1
-            return last_heads
-        correction_record['case3'] += 1
-        return this_shift
+    elif any(abs(pc_shift - last_heads) > MAX_SHIFT_DISP):
+        if any(abs(pc_shift - global_shift) > MAX_SHIFT_DISP):
+            case = 2
+            corrected_shift = last_heads
+        else:
+            case = 3
+            corrected_shift = pc_shift
 
     else:
-        correction_record['case5'] += 1
-        return (this_shift+last_heads)/2
+        case = 4
+        corrected_shift = (pc_shift + last_heads)/2
+
+    record.count_case(case)
+    record.record_shift(corrected_shift, global_shift,
+                        last_heads, pc_shift, case)
+    return corrected_shift, record
 
 
 def get_objExtent(labeled_image, obj_label):
@@ -405,7 +421,7 @@ def get_sizeChange(size1, size2):
 def write_tracks(old_tracks, scan, current_objects, obj_props):
     """Writes x and y grid position to tracks dataframe for each object present
     in scan."""
-    print('writing track', scan)
+    print('Writing tracks for scan', scan - 1)
 
     nobj = len(obj_props['id1'])
     scan_num = [scan-1] * nobj
@@ -418,17 +434,6 @@ def write_tracks(old_tracks, scan, current_objects, obj_props):
     tracks = old_tracks.append(new_tracks)
     print(new_tracks)
     return tracks
-
-# def write_duration(outNC, current_objects):
-#    nobj = len(current_objects['id1'])
-#
-#    for obj in range(nobj):
-#        if current_objects['id2'][obj] == 0:
-#            uid = current_objects['uid'][obj]
-#            outNC.variables['duration'][uid] = current_objects['obs_num'][obj]
-#            outNC.variables['origin'][uid] = current_objects['origin'][obj]
-#            merged_in = check_merging(obj, current_objects, obj_props)
-#            outNC.variables['merged'][uid] = merged_in
 
 
 def check_merging(dead_obj_id1, current_objects, obj_props):
@@ -460,19 +465,14 @@ def check_merging(dead_obj_id1, current_objects, obj_props):
         return current_objects['uid'][product_id1]
 
 
-# def write_survival(outNC, survival_stat, time, scan):
-#    outNC.variables['survival'][:5, scan] = survival_stat
-#    outNC.variables['time_utc'][scan] = time
-
-
-def init_uids(first_frame, second_frame, pairs):
+def init_uids(first_frame, second_frame, pairs, counter):
     """Returns a dictionary for objects with unique ids and their corresponding
     ids in frame1 and frame1. This function is called when echoes are detected
     after a period of no echoes."""
     nobj = np.max(first_frame)
 
     id1 = np.arange(nobj) + 1
-    uid = np.array(next_uid(count=nobj))
+    uid = counter.next_uid(count=nobj)
     id2 = pairs
     obs_num = np.zeros(nobj, dtype='i')
     origin = np.array(['-1']*nobj)
@@ -481,7 +481,7 @@ def init_uids(first_frame, second_frame, pairs):
                        'obs_num': obs_num, 'origin': origin}
     current_objects = attach_xyheads(first_frame, second_frame,
                                      current_objects)
-    return current_objects
+    return current_objects, counter
 
 
 def attach_xyheads(frame1, frame2, current_objects):
@@ -490,7 +490,6 @@ def attach_xyheads(frame1, frame2, current_objects):
     xhead = np.ma.empty(0)
     yhead = np.ma.empty(0)
     na_array = np.ma.array([-999], mask=[True])
-
     for obj in range(nobj):
         if ((current_objects['id1'][obj] > 0) and
                 (current_objects['id2'][obj] > 0)):
@@ -517,7 +516,7 @@ def get_object_center(obj_id, labeled_image):
     return np.array((center_x, center_y))
 
 
-def update_current_objects(frame1, frame2, pairs, old_objects):
+def update_current_objects(frame1, frame2, pairs, old_objects, counter):
     """Removes dead objects, updates living objects, and assigns new uids to
     new-born objects."""
     nobj = np.max(frame1)
@@ -536,16 +535,16 @@ def update_current_objects(frame1, frame2, pairs, old_objects):
             obj_orig = get_origin_uid(obj, frame1, old_objects)
             origin = np.append(origin, obj_orig)
             if obj_orig != '-1':
-                uid = np.append(uid, next_cid(obj_orig))
+                uid = np.append(uid, counter.next_cid(obj_orig))
             else:
-                uid = np.append(uid, next_uid())
+                uid = np.append(uid, counter.next_uid())
             obs_num = np.append(obs_num, 0)
 
     id2 = pairs
     current_objects = {'id1': id1, 'uid': uid, 'id2': id2,
                        'obs_num': obs_num, 'origin': origin}
     current_objects = attach_xyheads(frame1, frame2, current_objects)
-    return current_objects
+    return current_objects, counter
 
 
 def get_origin_uid(obj, frame1, old_objects):
@@ -613,27 +612,9 @@ def find_origin(id1_new, frame1):
         return big_diff_obj[0]
 
 
-def next_uid(count=1):
-    """Returns sequence of next unique ids and increments uid_counter."""
-    global uid_counter
-    this_uid = uid_counter + np.arange(count) + 1
-    uid_counter = uid_counter + count
-    return [str(uid) for uid in this_uid]
-
-
-def next_cid(uid):
-    """Returns next child id given the uid of a parent object. The cid is a
-    lowercase ascii character that will be appended to the uid of the parent
-    object to form the uid of the child."""
-    global cid_record
-    if uid in cid_record.keys():
-        cid_record[uid] += 1
-        letter = string.ascii_lowercase[cid_record[uid]]
-        return uid + letter
-    else:
-        cid_record[uid] = 0
-        letter = string.ascii_lowercase[cid_record[uid]]
-        return uid + letter
+# def new_find_origin(id1_new, frame1):
+#    object_ind = np.argwhere(frame1 == id1_new)
+#
 
 
 def get_objectProp(image1):
@@ -663,135 +644,193 @@ def survival_stats(pairs, num_obj2):
     obj_born = num_obj2 - obj_lived
     return [obj_lived, obj_died, obj_born, num_obj2]
 
+
+class Counter(object):
+
+    def __init__(self):
+        self.uid = -1
+        self.cid = {}
+
+    def next_uid(self, count=1):
+        new_uids = self.uid + np.arange(count) + 1
+        self.uid += count
+        return np.array([str(uid) for uid in new_uids])
+
+    def next_cid(self, pid):
+        if pid in self.cid.keys():
+            self.cid[pid] += 1
+        else:
+            self.cid[pid] = 0
+        letter = string.ascii_lowercase[self.cid[pid]]
+        return pid + letter
+
+
+class Record(object):
+
+    def __init__(self, scan):
+        self.scan = scan - 1
+        self.shifts = pd.DataFrame()
+        self.new_shifts = pd.DataFrame()
+        self.correction_tally = {'case0': 0, 'case1': 0, 'case2': 0,
+                                 'case3': 0, 'case4': 0, 'case5': 0}
+
+    def count_case(self, case_num):
+        self.correction_tally['case' + str(case_num)] += 1
+
+    # Shift Correction Case Guide:
+    # case0 - new object, local_shift and global_shift disagree, returns global
+    # case1 - new object, returns local_shift
+    # case2 - local disagrees with last head and global, returns last head
+    # case3 - local disagrees with last head, returns local
+    # case4 - local and last head agree, returns average of both
+    # case5 - flow regions empty or at edge of frame, returns global_shift
+
+    def record_shift(self, corr, gl_shift, l_heads, pc_shift, case):
+
+        if len(l_heads) == 0:
+            l_heads = np.ma.array([-999, -999], mask=[True, True])
+
+        new_shift_record = pd.DataFrame()
+        new_shift_record['scan'] = [self.scan]
+        new_shift_record['uid'] = ['uid']
+        new_shift_record['corrected'] = [corr]
+        new_shift_record['global'] = [gl_shift]
+        new_shift_record['last_heads'] = [l_heads]
+        new_shift_record['phase'] = [pc_shift]
+        new_shift_record['case'] = [case]
+
+        self.new_shifts = self.new_shifts.append(new_shift_record)
+
+    def add_uids(self, current_objects):
+        if len(self.new_shifts) > 0:
+            self.new_shifts['uid'] = current_objects['uid']
+            self.shifts = self.shifts.append(self.new_shifts)
+            self.new_shifts = pd.DataFrame()
+
+    def increment_scan(self):
+        self.scan += 1
+
+
+class Cell_tracks(object):
+
+    def __init__(self, grid_list, grid_size=500):
+        self.params = {'DBZ_THRESH': DBZ_THRESH,
+                       'MIN_SIZE': MIN_SIZE,
+                       'SEARCH_MARGIN': SEARCH_MARGIN,
+                       'FLOW_MARGIN': FLOW_MARGIN,
+                       'MAX_FLOW_MAG': MAX_FLOW_MAG,
+                       'MAX_DISPARITY': MAX_DISPARITY,
+                       'MAX_SHIFT_DISP': MAX_SHIFT_DISP}
+        self.grid_size = grid_size
+        self.grids = grid_list
+        self.tracks, self.record = get_tracks(grid_list)
+
+    def print_params(self):
+        for key, val in self.params.items():
+            print(key + ':', val)
+
+    def animate(self, outfile_name, arrows=False):
+        def animate_frame(nframe):
+            """ Animate a single frame of gridded reflectivity including
+            uids. """
+            plt.clf()
+            print("Frame:", nframe)
+            grid = self.grids[nframe]
+            display = pyart.graph.GridMapDisplay(grid)
+            ax = fig_grid.add_subplot(111)
+#            display.plot_basemap(lat_lines=np.arange(30, 46, .2),
+#                                 lon_lines=np.arange(-110, -75, .4))
+            display.plot_grid('reflectivity', level=3, vmin=-8, vmax=64,
+                              cmap=pyart.graph.cm.NWSRef)
+
+            frame_tracks = self.tracks[self.tracks['scan'] == nframe]
+            for ind, uid in enumerate(frame_tracks['uid']):
+                x = (frame_tracks['x'].iloc[ind])*self.grid_size
+                y = (frame_tracks['y'].iloc[ind])*self.grid_size
+                ax.annotate(uid, (y, x), fontsize=20)
+                if arrows and ((nframe, uid) in self.record.shifts.index):
+                    shift = self.record.shifts.loc[nframe, uid]['corrected']
+                    shift = shift * self.grid_size
+                    ax.arrow(y, x, shift[1], shift[0],
+                             head_width=3*self.grid_size,
+                             head_length=6*self.grid_size)
+            return
+        fig_grid = plt.figure(figsize=(10, 8))
+        anim_grid = animation.FuncAnimation(fig_grid, animate_frame,
+                                            frames=(len(self.grids) - 1))
+        anim_grid.save(outfile_name,
+                       writer='imagemagick', fps=1)
+
 # _____________________________________________________________________________
-# _______________________settings for tracking method__________________________
-START_TIME = datetime.datetime.now()
-BASE_EPOCH = datetime.datetime(1970, 1, 1)
-DBZ_THRESH = 24
-MIN_SIZE = 50
-MAX_SHIFT_DISP = 8
-NEAR_THRESH = 4
-SEARCH_MARGIN = 10
-FLOW_MARGIN = 20
-STD_FLOW_MAG = 20
-LARGE_NUM = 1000
-MAX_DISPARITY = 35
-# _____________________________________________________________________________
-# _____________________read radar files and generate tracks____________________
-# get files from local directory
-local_dir = '/home/mhpicel/Practice/csapr data/sur/20110525/'
-local_dir_data = [local_dir + ext for ext in os.listdir(local_dir)]
-local_dir_data.sort()
-file_list = local_dir_data
+# _____________________________Tracks Function_________________________________
 
-# initialize counters
-uid_counter = -1
-cid_record = {}
 
-correction_record = {'case0': 0, 'case1': 0, 'case2': 0,
-                     'case3': 0, 'case4': 0, 'case5': 0}
-# Shift Correction Guide:
-# case0 - new object, local_shift and global_shift disagree, returns global
-# case1 - new object, returns local_shift
-# case2 - local disagrees with last head and global, returns last head
-# case3 - local disagrees with last head, returns local
-# case4 - flow regions empty or at edge of frame, returns global_shift
-# case5 - local and last head agree, returns average of both
+def get_tracks(grids):
+    start_time = datetime.datetime.now()
+    start_scan = 0
+    end_scan = len(grids) - 1
 
-shift_record = pd.DataFrame({'shift_x': [],
-                             'shift_y': [],
-                             'head_x': np.ma.array([]),
-                             'head_y': np.ma.array([])})
+    counter = Counter()
+    record = Record(start_scan)
+    current_objects = None
 
-start_scan = 10
-# end_scan = len(file_list)-1
-end_scan = 25
+    newRain = True
 
-newRain = True
-if 'current_objects' in globals():
-    del current_objects
+    print('Total scans in this list:', end_scan - start_scan + 1)
 
-print('Total scans in this file', end_scan - start_scan + 1)
-
-grid2 = get_grid(local_dir_data[start_scan])
-raw2 = grid2[3, :, :]
-frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
-tracks = pd.DataFrame()
-
-for scan in range(start_scan + 1, end_scan + 1):
-    grid1 = grid2
-    raw1 = raw2
-    frame1 = frame2
-
-    grid2 = get_grid(local_dir_data[scan])
+    grid2 = grids[start_scan].fields['reflectivity']['data']
     raw2 = grid2[3, :, :]
     frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
+    tracks = pd.DataFrame()
 
-    if scan == end_scan:
-        frame2 = np.zeros_like(frame2)
+    for scan in range(start_scan + 1, end_scan + 1):
+        record.increment_scan()
+        raw1 = raw2
+        frame1 = frame2
+        grid2 = grids[scan].fields['reflectivity']['data']
+        raw2 = grid2[3, :, :]
+        frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
 
-    if np.max(frame1) == 0:
-        newRain = True
-        print('newRain')
-        if 'current_objects' in globals():
-            del current_objects
-        continue
+        if np.max(frame1) == 0:
+            newRain = True
+            print('newRain')
+            if 'current_objects' is not None:
+                current_objects = None
+            continue
 
-    global_shift = get_global_shift(raw1, raw2, STD_FLOW_MAG)
-    pairs = get_pairs(frame1, frame2, global_shift)
-    obj_props = get_objectProp(frame1)
+        global_shift = get_global_shift(raw1, raw2, MAX_FLOW_MAG)
+        pairs, record = get_pairs(frame1,
+                                  frame2,
+                                  global_shift,
+                                  current_objects,
+                                  record)
+        obj_props = get_objectProp(frame1)
 
-    if newRain:
-        current_objects = init_uids(frame1, frame2, pairs)
-        newRain = False
-    else:
-        current_objects = update_current_objects(frame1, frame2,
-                                                 pairs, current_objects)
+        if newRain:
+            current_objects, counter = init_uids(
+                frame1,
+                frame2,
+                pairs,
+                counter
+            )
+            newRain = False
+        else:
+            current_objects, counter = update_current_objects(
+                frame1,
+                frame2,
+                pairs,
+                current_objects,
+                counter
+            )
+        record.add_uids(current_objects)
+        tracks = write_tracks(tracks, scan, current_objects, obj_props)
+        # scan loop end
 
-    tracks = write_tracks(tracks, scan, current_objects, obj_props)
-    # scan loop end
+    record.shifts.set_index(['scan', 'uid'], inplace=True)
+    record.shifts.sort_index(inplace=True)
+    time_elapsed = datetime.datetime.now() - start_time
+    print('\n')
+    print('closing files')
+    print('time elapsed', np.round(time_elapsed.seconds/60), 'minutes')
 
-
-shift_record.set_index(['scan', 'uid'], inplace=True)
-shift_record.sort_index(inplace=True)
-time_elapsed = datetime.datetime.now() - START_TIME
-print('\n')
-print('closing files')
-print('time elapsed', np.round(time_elapsed.seconds/60), 'minutes')
-# _____________________________________________________________________________
-# ___________________________generate animation________________________________
-anim_filename = 'tracks_maint.gif'
-
-
-def animate_grid(nframe):
-    """ Animate a single frame of gridded reflectivity including uids. """
-    plt.clf()
-    nscan = nframe + start_scan
-    fname = local_dir_data[nscan]
-    print("Frame:", nframe, "File:", fname)
-
-    radar = pyart.io.read(fname)
-    grid = pyart.map.grid_from_radars(
-        radar, grid_shape=(34, 240, 240),
-        grid_limits=((0, 17000), (-60000, 60000), (-60000, 60000)),
-        fields=['reflectivity'], gridding_algo="map_gates_to_grid",
-        weighting_function='BARNES')
-    display = pyart.graph.GridMapDisplay(grid)
-    ax = fig_grid.add_subplot(111)
-    display.plot_basemap(lat_lines=np.arange(30, 46, .2),
-                         lon_lines=np.arange(-110, -75, .4))
-    display.plot_grid('reflectivity', level=3, vmin=-8, vmax=64,
-                      cmap=pyart.graph.cm.NWSRef)
-
-    frame_tracks = tracks[tracks['scan'] == nscan]
-    for ind, uid in enumerate(frame_tracks['uid']):
-        x = (frame_tracks['x'].iloc[ind])*500
-        y = (frame_tracks['y'].iloc[ind])*500
-        ax.annotate(uid, (y, x), fontsize=20)
-    return
-
-fig_grid = plt.figure(figsize=(10, 8))
-anim_grid = animation.FuncAnimation(fig_grid, animate_grid,
-                                    frames=(end_scan - start_scan))
-anim_grid.save(anim_filename,
-               writer='imagemagick', fps=1)
+    return tracks, record
