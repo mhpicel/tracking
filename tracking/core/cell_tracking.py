@@ -92,12 +92,12 @@ def get_pairs(image1, image2, global_shift, current_objects, record):
     """Given two images, this function identifies the matching objects and
     pairs them appropriately. See disparity function."""
     nobj1 = np.max(image1)
-    nobj2 = np.max(image2)
+#    nobj2 = np.max(image2)
 
     if nobj1 == 0:
         print('No echoes found in the first scan.')
         return
-    elif nobj2 == 0:
+    elif image2 is None:
         zero_pairs = np.zeros(nobj1)
         return zero_pairs, record
 
@@ -782,7 +782,7 @@ class Record(object):
 
 
 class Cell_tracks(object):
-
+    """Cell_tracks objects"""
     def __init__(self, field='reflectivity'):
         self.params = {'DBZ_THRESH': DBZ_THRESH,
                        'MIN_SIZE': MIN_SIZE,
@@ -872,7 +872,7 @@ class Cell_tracks(object):
                 self.__save()
                 self.record.update_scan_and_time(grid_obj1)
                 raw2 = None
-                frame2 = np.zeros_like(frame1)
+                frame2 = None
 
             if np.max(frame1) == 0:
                 newRain = True
