@@ -843,7 +843,8 @@ class Cell_tracks(object):
     def __init__(self, field='reflectivity'):
         self.__params = None
         self.field = field
-        self.grids = []
+#        self.grids = []
+        self.last_grid = None
         self.counter = None
         self.record = None
         self.current_objects = None
@@ -899,49 +900,52 @@ class Cell_tracks(object):
 
         if self.record is None:
             # tracks object being initialized
-            start_scan = 0
-            grid_obj2 = grids[0]
-            self.grid_size = get_grid_size(grids[0])
+#            start_scan = 0
+#            grid_obj2 = grids[0]
+            grid_obj2 = next(grids)
+            self.grid_size = get_grid_size(grid_obj2)
             self.counter = Counter()
-            self.record = Record(grids[0])
+            self.record = Record(grid_obj2)
         else:
             # tracks object being updated
-            start_scan = -1
-            grid_obj2 = self.grids[-1]
+#            start_scan = -1
+#            grid_obj2 = self.grids[-1]
+            grid_obj2 = self.last_grid
             self.tracks.drop(self.record.scan + 1)  # last scan is overwritten
-        self.grids += grids
-        end_scan = len(grids)
+#        self.grids += grids
+#        end_scan = len(grids)
 
         if self.current_objects is None:
             newRain = True
         else:
             newRain = False
 
-        print('Total scans in this list:', len(grids))
+#        print('Total scans in this list:', len(grids))
 
-#        grid2 = grid_obj2.fields[self.field]['data'].data
-#        raw2 = grid2[get_gs_alt(self.grid_size), :, :]
-#        frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
         raw2, frame2 = extract_grid_data(grid_obj2, self.field, self.grid_size)
 
-        for scan in range(start_scan + 1, end_scan + 1):
+#        for scan in range(start_scan + 1, end_scan + 1):
+        while grid_obj2 is not None:
             grid_obj1 = grid_obj2
             raw1 = raw2
             frame1 = frame2
 
-            if scan != end_scan:
-                grid_obj2 = grids[scan]
+            try:
+                grid_obj2 = next(grids)
+            except StopIteration:
+                grid_obj2 = None
+
+#            if scan != end_scan:
+            if grid_obj2 is not None:
+#                grid_obj2 = grids[scan]
                 self.record.update_scan_and_time(grid_obj1, grid_obj2)
-#                grid2 = grid_obj2.fields[self.field]['data'].data
-#                raw2 = grid2[get_gs_alt(self.grid_size), :, :]
-#                print(raw2)
-#                frame2 = get_filtered_frame(grid2, MIN_SIZE, DBZ_THRESH)
                 raw2, frame2 = extract_grid_data(grid_obj2,
                                                  self.field,
                                                  self.grid_size)
             else:
                 # setup to write final scan
                 self.__save()
+                self.last_grid = grid_obj1
                 self.record.update_scan_and_time(grid_obj1)
                 raw2 = None
                 frame2 = np.zeros_like(frame1)
@@ -988,45 +992,45 @@ class Cell_tracks(object):
         print('time elapsed', np.round(time_elapsed.seconds/60, 1), 'minutes')
         return
 
-    def animate(self, outfile_name, arrows=False, isolation=False, fps=1):
-        """Creates gif animation of tracked cells."""
-        grid_size = get_grid_size(self.grids[0])
-
-        def animate_frame(nframe):
-            """ Animate a single frame of gridded reflectivity including
-            uids. """
-            plt.clf()
-            print("Frame:", nframe)
-            grid = self.grids[nframe]
-            display = pyart.graph.GridMapDisplay(grid)
-            ax = fig_grid.add_subplot(111)
-            display.plot_basemap()
-            display.plot_grid(self.field, level=2, vmin=-8, vmax=64,
-                              mask_outside=False, cmap=pyart.graph.cm.NWSRef)
-#            display.plot_grid(self.field, level=2, vmin=0, vmax=2,
-#                              mask_outside=False)
-
-            if nframe in self.tracks.index.levels[0]:
-                frame_tracks = self.tracks.loc[nframe]
-                for ind, uid in enumerate(frame_tracks.index):
-
-                    if isolation and not frame_tracks['isolated'].iloc[ind]:
-                        continue
-
-                    x = frame_tracks['grid_x'].iloc[ind]*grid_size[2]
-                    y = frame_tracks['grid_y'].iloc[ind]*grid_size[1]
-                    ax.annotate(uid, (x, y), fontsize=20)
-                    if arrows and ((nframe, uid) in self.record.shifts.index):
-                        shift = self.record.shifts \
-                            .loc[nframe, uid]['corrected']
-                        shift = shift * grid_size[1:]
-                        ax.arrow(x, y, shift[1], shift[0],
-                                 head_width=3*grid_size[1],
-                                 head_length=6*grid_size[1])
-            del grid
-            return
-        fig_grid = plt.figure(figsize=(10, 8))
-        anim_grid = animation.FuncAnimation(fig_grid, animate_frame,
-                                            frames=len(self.grids))
-        anim_grid.save(outfile_name,
-                       writer='imagemagick', fps=fps)
+#    def animate(self, outfile_name, arrows=False, isolation=False, fps=1):
+#        """Creates gif animation of tracked cells."""
+#        grid_size = get_grid_size(self.grids[0])
+#
+#        def animate_frame(nframe):
+#            """ Animate a single frame of gridded reflectivity including
+#            uids. """
+#            plt.clf()
+#            print("Frame:", nframe)
+#            grid = self.grids[nframe]
+#            display = pyart.graph.GridMapDisplay(grid)
+#            ax = fig_grid.add_subplot(111)
+#            display.plot_basemap()
+#            display.plot_grid(self.field, level=2, vmin=-8, vmax=64,
+#                              mask_outside=False, cmap=pyart.graph.cm.NWSRef)
+##            display.plot_grid(self.field, level=2, vmin=0, vmax=2,
+##                              mask_outside=False)
+#
+#            if nframe in self.tracks.index.levels[0]:
+#                frame_tracks = self.tracks.loc[nframe]
+#                for ind, uid in enumerate(frame_tracks.index):
+#
+#                    if isolation and not frame_tracks['isolated'].iloc[ind]:
+#                        continue
+#
+#                    x = frame_tracks['grid_x'].iloc[ind]*grid_size[2]
+#                    y = frame_tracks['grid_y'].iloc[ind]*grid_size[1]
+#                    ax.annotate(uid, (x, y), fontsize=20)
+#                    if arrows and ((nframe, uid) in self.record.shifts.index):
+#                        shift = self.record.shifts \
+#                            .loc[nframe, uid]['corrected']
+#                        shift = shift * grid_size[1:]
+#                        ax.arrow(x, y, shift[1], shift[0],
+#                                 head_width=3*grid_size[1],
+#                                 head_length=6*grid_size[1])
+#            del grid
+#            return
+#        fig_grid = plt.figure(figsize=(10, 8))
+#        anim_grid = animation.FuncAnimation(fig_grid, animate_frame,
+#                                            frames=len(self.grids))
+#        anim_grid.save(outfile_name,
+#                       writer='imagemagick', fps=fps)
