@@ -7,6 +7,7 @@ and helper classes in this file.
 
 import copy
 import datetime
+import gc
 import string
 import matplotlib.pyplot as plt
 from matplotlib import animation
@@ -254,8 +255,12 @@ def get_ambient_flow(obj_extent, img1, img2, margin):
     if row_lb <= 0 or col_lb <= 0 or row_ub > dims[0] or col_ub > dims[1]:
         return None
 
-    flow_region1 = img1[row_lb:row_ub+1, col_lb:col_ub+1]
-    flow_region2 = img2[row_lb:row_ub+1, col_lb:col_ub+1]
+    flow_region1 = np.copy(img1[row_lb:row_ub+1, col_lb:col_ub+1])
+    flow_region2 = np.copy(img2[row_lb:row_ub+1, col_lb:col_ub+1])
+
+    flow_region1[flow_region1 != 0] = 1
+    flow_region2[flow_region2 != 0] = 1
+
     return fft_flowvectors(flow_region1, flow_region2)
 
 
@@ -605,69 +610,69 @@ def update_current_objects(frame1, frame2, pairs, old_objects, counter):
     return current_objects, counter
 
 
-def get_origin_uid(obj, frame1, old_objects):
-    """Returns the unique id of the origin for a given object. Retunrs '-1' if
-    the object has not split off from another object."""
-    origin_id = find_origin(obj, frame1)
-    if origin_id is None:
-        return '-1'
+#def get_origin_uid(obj, frame1, old_objects):
+#    """Returns the unique id of the origin for a given object. Retunrs '-1' if
+#    the object has not split off from another object."""
+#    origin_id = find_origin(obj, frame1)
+#    if origin_id is None:
+#        return '-1'
+#
+#    if origin_id not in old_objects['id2']:
+#        return '-1'
+#
+#    origin_index = np.argwhere(old_objects['id2'] == origin_id)[0][0]
+#
+#    origin_uid = old_objects['uid'][origin_index]
+#    return origin_uid
 
-    if origin_id not in old_objects['id2']:
-        return '-1'
 
-    origin_index = np.argwhere(old_objects['id2'] == origin_id)[0][0]
-
-    origin_uid = old_objects['uid'][origin_index]
-    return origin_uid
-
-
-def find_origin(id1_new, frame1):
-    """This function checks near by objects in the frame for the given new-born
-    object. Returns uid of an object that existed before the new born object,
-    has a comparable or larger size, and is within a predefined distance.
-    Returns '-1' if no such object exists."""
-    if np.max(frame1) == 1:
-        return None
-
-    object_ind = np.argwhere(frame1 == id1_new)
-    object_size = object_ind.shape[0]
-
-    neighbour_ind = np.argwhere((frame1 > 0) & (frame1 != id1_new))
-    neighbour_size = neighbour_ind.shape[0]
-
-    neighbour_dist = np.array([])
-    neighbour_id = np.array([])
-    size_ratio = np.array([])
-    size_diff = np.array([])
-
-    for pix in range(object_size):
-        for neighbour in range(neighbour_size):
-            euc_dist = euclidean_dist(object_ind[pix, :],
-                                      neighbour_ind[neighbour, :])
-            neighbour_dist = np.append(neighbour_dist, euc_dist)
-            pix_id = neighbour_ind[neighbour, :]
-            neighbour_id = np.append(neighbour_id,
-                                     frame1[pix_id[0], pix_id[1]])
-
-    nearest_object_id = neighbour_id[neighbour_dist < NEAR_THRESH]
-    # the_nearest_object = neighbour_id[neighbour_dist == min(neighbour_dist)]
-
-    if len(nearest_object_id) == 0:
-        return None
-
-    neigh_objects = np.unique(nearest_object_id)
-    for object in neigh_objects:
-        nearest_object_size = len(frame1[frame1 == object])
-        size_ratio = np.append(size_ratio, nearest_object_size/object_size)
-        size_diff = np.append(size_diff, nearest_object_size - object_size)
-
-    big_ratio_obj = neigh_objects[size_ratio == max(size_ratio)]
-    big_diff_obj = neigh_objects[size_diff == max(size_diff)]
-
-    if big_ratio_obj == big_diff_obj:
-        return big_diff_obj[0]
-    else:
-        return big_diff_obj[0]
+#def find_origin(id1_new, frame1):
+#    """This function checks near by objects in the frame for the given new-born
+#    object. Returns uid of an object that existed before the new born object,
+#    has a comparable or larger size, and is within a predefined distance.
+#    Returns '-1' if no such object exists."""
+#    if np.max(frame1) == 1:
+#        return None
+#
+#    object_ind = np.argwhere(frame1 == id1_new)
+#    object_size = object_ind.shape[0]
+#
+#    neighbour_ind = np.argwhere((frame1 > 0) & (frame1 != id1_new))
+#    neighbour_size = neighbour_ind.shape[0]
+#
+#    neighbour_dist = np.array([])
+#    neighbour_id = np.array([])
+#    size_ratio = np.array([])
+#    size_diff = np.array([])
+#
+#    for pix in range(object_size):
+#        for neighbour in range(neighbour_size):
+#            euc_dist = euclidean_dist(object_ind[pix, :],
+#                                      neighbour_ind[neighbour, :])
+#            neighbour_dist = np.append(neighbour_dist, euc_dist)
+#            pix_id = neighbour_ind[neighbour, :]
+#            neighbour_id = np.append(neighbour_id,
+#                                     frame1[pix_id[0], pix_id[1]])
+#
+#    nearest_object_id = neighbour_id[neighbour_dist < NEAR_THRESH]
+#    # the_nearest_object = neighbour_id[neighbour_dist == min(neighbour_dist)]
+#
+#    if len(nearest_object_id) == 0:
+#        return None
+#
+#    neigh_objects = np.unique(nearest_object_id)
+#    for object in neigh_objects:
+#        nearest_object_size = len(frame1[frame1 == object])
+#        size_ratio = np.append(size_ratio, nearest_object_size/object_size)
+#        size_diff = np.append(size_diff, nearest_object_size - object_size)
+#
+#    big_ratio_obj = neigh_objects[size_ratio == max(size_ratio)]
+#    big_diff_obj = neigh_objects[size_diff == max(size_diff)]
+#
+#    if big_ratio_obj == big_diff_obj:
+#        return big_diff_obj[0]
+#    else:
+#        return big_diff_obj[0]
 
 
 def get_objectProp(image1, grid1, field, record):
@@ -843,6 +848,7 @@ class Cell_tracks(object):
     def __init__(self, field='reflectivity'):
         self.__params = None
         self.field = field
+        self.grid_size = None
 #        self.grids = []
         self.last_grid = None
         self.counter = None
@@ -900,31 +906,22 @@ class Cell_tracks(object):
 
         if self.record is None:
             # tracks object being initialized
-#            start_scan = 0
-#            grid_obj2 = grids[0]
             grid_obj2 = next(grids)
             self.grid_size = get_grid_size(grid_obj2)
             self.counter = Counter()
             self.record = Record(grid_obj2)
         else:
             # tracks object being updated
-#            start_scan = -1
-#            grid_obj2 = self.grids[-1]
             grid_obj2 = self.last_grid
             self.tracks.drop(self.record.scan + 1)  # last scan is overwritten
-#        self.grids += grids
-#        end_scan = len(grids)
 
         if self.current_objects is None:
             newRain = True
         else:
             newRain = False
 
-#        print('Total scans in this list:', len(grids))
-
         raw2, frame2 = extract_grid_data(grid_obj2, self.field, self.grid_size)
 
-#        for scan in range(start_scan + 1, end_scan + 1):
         while grid_obj2 is not None:
             grid_obj1 = grid_obj2
             raw1 = raw2
@@ -935,9 +932,7 @@ class Cell_tracks(object):
             except StopIteration:
                 grid_obj2 = None
 
-#            if scan != end_scan:
             if grid_obj2 is not None:
-#                grid_obj2 = grids[scan]
                 self.record.update_scan_and_time(grid_obj1, grid_obj2)
                 raw2, frame2 = extract_grid_data(grid_obj2,
                                                  self.field,
@@ -985,6 +980,7 @@ class Cell_tracks(object):
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
+            gc.collect()
             # scan loop end
         self.__load()
         time_elapsed = datetime.datetime.now() - start_time
@@ -1007,8 +1003,6 @@ class Cell_tracks(object):
 #            display.plot_basemap()
 #            display.plot_grid(self.field, level=2, vmin=-8, vmax=64,
 #                              mask_outside=False, cmap=pyart.graph.cm.NWSRef)
-##            display.plot_grid(self.field, level=2, vmin=0, vmax=2,
-##                              mask_outside=False)
 #
 #            if nframe in self.tracks.index.levels[0]:
 #                frame_tracks = self.tracks.loc[nframe]
@@ -1034,3 +1028,49 @@ class Cell_tracks(object):
 #                                            frames=len(self.grids))
 #        anim_grid.save(outfile_name,
 #                       writer='imagemagick', fps=fps)
+
+
+def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
+    """Creates gif animation of tracked cells."""
+    grid_size = tobj.grid_size
+    nframes = tobj.tracks.index.levels[0].max()
+    print(nframes)
+
+    def animate_frame(nframe):
+        """ Animate a single frame of gridded reflectivity including
+        uids. """
+        plt.clf()
+        print("Frame:", nframe)
+        grid = next(grids)
+        display = pyart.graph.GridMapDisplay(grid)
+        ax = fig_grid.add_subplot(111)
+        display.plot_basemap()
+        display.plot_grid(tobj.field, level=get_gs_alt(grid_size),
+                          vmin=-8, vmax=64, mask_outside=False,
+                          cmap=pyart.graph.cm.NWSRef)
+
+        if nframe in tobj.tracks.index.levels[0]:
+            frame_tracks = tobj.tracks.loc[nframe]
+            for ind, uid in enumerate(frame_tracks.index):
+
+                if isolation and not frame_tracks['isolated'].iloc[ind]:
+                    continue
+
+                x = frame_tracks['grid_x'].iloc[ind]*grid_size[2]
+                y = frame_tracks['grid_y'].iloc[ind]*grid_size[1]
+                ax.annotate(uid, (x, y), fontsize=20)
+                if arrows and ((nframe, uid) in tobj.record.shifts.index):
+                    shift = tobj.record.shifts \
+                        .loc[nframe, uid]['corrected']
+                    shift = shift * grid_size[1:]
+                    ax.arrow(x, y, shift[1], shift[0],
+                             head_width=3*grid_size[1],
+                             head_length=6*grid_size[1])
+        del grid
+        return
+
+    fig_grid = plt.figure(figsize=(10, 8))
+    anim_grid = animation.FuncAnimation(fig_grid, animate_frame,
+                                        frames=nframes)
+    anim_grid.save(outfile_name,
+                   writer='imagemagick', fps=fps)
