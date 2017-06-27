@@ -63,9 +63,9 @@ def get_grid_size(grid_obj):
     z_len = grid_obj.z['data'][-1] - grid_obj.z['data'][0]
     x_len = grid_obj.x['data'][-1] - grid_obj.x['data'][0]
     y_len = grid_obj.y['data'][-1] - grid_obj.y['data'][0]
-    z_size = z_len / (grid_obj.z['data'].shape[0])
-    x_size = x_len / (grid_obj.x['data'].shape[0])
-    y_size = y_len / (grid_obj.y['data'].shape[0])
+    z_size = z_len / (grid_obj.z['data'].shape[0] - 1)
+    x_size = x_len / (grid_obj.x['data'].shape[0] - 1)
+    y_size = y_len / (grid_obj.y['data'].shape[0] - 1)
     return np.array([z_size, y_size, x_size])
 
 
@@ -712,13 +712,13 @@ def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
                              head_width=3*grid_size[1],
                              head_length=6*grid_size[1])
         del grid
-        return
 
     fig_grid = plt.figure(figsize=(10, 8))
     anim_grid = animation.FuncAnimation(fig_grid, animate_frame,
                                         frames=enumerate(grids), repeat=False)
     anim_grid.save(outfile_name,
                    writer='imagemagick', fps=fps)
+    plt.close()
 
 
 class Counter(object):
