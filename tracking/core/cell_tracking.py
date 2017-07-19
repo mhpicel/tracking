@@ -21,7 +21,7 @@ import pyart
 LARGE_NUM = 1000
 FIELD_THRESH = 32
 ISO_THRESH = 8
-MIN_SIZE = 16
+MIN_SIZE = 32
 NEAR_THRESH = 4
 SEARCH_MARGIN = 8
 FLOW_MARGIN = 20
@@ -680,7 +680,7 @@ def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
     """Creates gif animation of tracked cells."""
     grid_size = tobj.grid_size
     nframes = tobj.tracks.index.levels[0].max() + 1
-    print(nframes)
+    print('Animating', nframes, 'frames.')
 
     def animate_frame(enum_grid):
         """ Animate a single frame of gridded reflectivity including
@@ -711,11 +711,12 @@ def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
                     ax.arrow(x, y, shift[1], shift[0],
                              head_width=3*grid_size[1],
                              head_length=6*grid_size[1])
-        del grid
+        del grid, enum_grid, display, ax, frame_tracks
+        gc.collect()
 
     fig_grid = plt.figure(figsize=(10, 8))
     anim_grid = animation.FuncAnimation(fig_grid, animate_frame,
-                                        frames=enumerate(grids), repeat=False)
+                                        frames=enumerate(grids))
     anim_grid.save(outfile_name,
                    writer='imagemagick', fps=fps)
     plt.close()
