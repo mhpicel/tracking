@@ -17,45 +17,25 @@ from scipy import ndimage, optimize
 
 import pyart
 
-# Settings for Tracking Method
+# Global Constants
 LARGE_NUM = 1000
-FIELD_THRESH = 32
-ISO_THRESH = 8
-MIN_SIZE = 32
-NEAR_THRESH = 4
-SEARCH_MARGIN = 8
-FLOW_MARGIN = 20
-MAX_DISPARITY = 999
-MAX_FLOW_MAG = 50
-MAX_SHIFT_DISP = 15
-
-
-def print_params():
-    """Prints tracking parameters."""
-    print('FIELD_THRESH:', FIELD_THRESH)
-    print('MIN_SIZE:', MIN_SIZE)
-    print('SEARCH_MARGIN:', SEARCH_MARGIN)
-    print('FLOW_MARGIN:', FLOW_MARGIN)
-    print('MAX_DISPARITY:', MAX_DISPARITY)
-    print('MAX_FLOW_MAG:', MAX_FLOW_MAG)
-    print('MAX_SHIFT_DISP:', MAX_SHIFT_DISP)
 
 
 def parse_grid_datetime(grid_obj):
     """Obtains datetime object from pyart grid_object."""
     date = grid_obj.time['units'][14:24]
     time = grid_obj.time['units'][25:-1]
-    dt = datetime.datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M:%S')
+    dt = datetime.datetime.strptime(date + ' ' + time, '%Y-%m-%d `%H:%M:%S')
     return dt
 
 
 def get_vert_projection(grid, thresh=40):
     """Returns binary vertical projection from grid."""
-    projection = np.empty_like(grid[0, :, :])
-    for i in range(grid.shape[1]):
-        for j in range(grid.shape[2]):
-            projection[i, j] = np.any(grid[:, i, j] > thresh)
-    return projection
+#    projection = np.empty_like(grid[0, :, :])
+#    for i in range(grid.shape[1]):
+#        for j in range(grid.shape[2]):
+#            projection[i, j] = np.any(grid[:, i, j] > thresh)
+    return np.any(grid > thresh, axis=0)
 
 
 def get_grid_size(grid_obj):
@@ -95,15 +75,16 @@ def clear_small_echoes(label_image, min_size):
     return label_image[0]
 
 
-def extract_grid_data(grid_obj, field, grid_size):
+def extract_grid_data(grid_obj, field, grid_size, params):
     masked = grid_obj.fields[field]['data']
     masked.data[masked.data == masked.fill_value] = 0
     raw = masked.data[get_gs_alt(grid_size), :, :]
-    frame = get_filtered_frame(masked.data, MIN_SIZE, FIELD_THRESH)
+    frame = get_filtered_frame(masked.data, params['MIN_SIZE'],
+                               params['FIELD_THRESH'])
     return raw, frame
 
 
-def get_pairs(image1, image2, global_shift, current_objects, record):
+def get_pairs(image1, image2, global_shift, current_objects, record, params):
     """Given two images, this function identifies the matching objects and
     pairs them appropriately. See disparity function."""
     nobj1 = np.max(image1)
@@ -114,32 +95,34 @@ def get_pairs(image1, image2, global_shift, current_objects, record):
         return
     elif nobj2 == 0:
         zero_pairs = np.zeros(nobj1)
-        return zero_pairs, record
+        return zero_pairs
 
-    obj_match, record = locate_allObjects(image1,
-                                          image2,
-                                          global_shift,
-                                          current_objects,
-                                          record)
-    pairs = match_pairs(obj_match)
-    return pairs, record
+    obj_match = locate_allObjects(image1,
+                                  image2,
+                                  global_shift,
+                                  current_objects,
+                                  record,
+                                  params)
+    pairs = match_pairs(obj_match, params)
+    return pairs
 
 
-def match_pairs(obj_match):
+def match_pairs(obj_match, params):
     """Matches objects into pairs given a disparity matrix and removes bad
     matches. Bad matches have a disparity greater than the maximum
     threshold."""
     pairs = optimize.linear_sum_assignment(obj_match)
 
     for id1 in pairs[0]:
-        if obj_match[id1, pairs[1][id1]] > MAX_DISPARITY:
+        if obj_match[id1, pairs[1][id1]] > params['MAX_DISPARITY']:
             pairs[1][id1] = -1  # -1 indicates the object has died
 
     pairs = pairs[1] + 1  # ids in current_objects are 1-indexed
     return pairs
 
 
-def locate_allObjects(image1, image2, global_shift, current_objects, record):
+def locate_allObjects(image1, image2, global_shift, current_objects, record,
+                      params):
     """Matches all the objects in image1 to objects in image2. This is the main
     function called on a pair of images."""
     nobj1 = np.max(image1)
@@ -154,25 +137,27 @@ def locate_allObjects(image1, image2, global_shift, current_objects, record):
 
     for obj_id1 in np.arange(nobj1) + 1:
         obj1_extent = get_objExtent(image1, obj_id1)
-        shift = get_ambient_flow(obj1_extent, image1, image2, FLOW_MARGIN)
+        shift = get_ambient_flow(obj1_extent, image1, image2, params)
         if shift is None:
             record.count_case(5)
             shift = global_shift
 
-        shift, record = correct_shift(shift, current_objects, obj_id1,
-                                      global_shift, record)
+        shift = correct_shift(shift, current_objects, obj_id1,
+                              global_shift, record, params)
 
-        search_box = predict_searchExtent(obj1_extent, shift, SEARCH_MARGIN)
+        search_box = predict_search_extent(obj1_extent, shift, params)
         search_box = check_search_box(search_box, image2.shape)
-        obj_found = find_objects(search_box, image2)
-        disparity = get_disparity_all(obj_found, image2,
+        objs_found = find_objects(search_box, image2)
+        disparity = get_disparity_all(objs_found, image2,
                                       search_box, obj1_extent)
-        obj_match = save_obj_match(obj_id1, obj_found, disparity, obj_match)
+        obj_match = save_obj_match(obj_id1, objs_found, disparity, obj_match,
+                                   params)
 
-    return obj_match, record
+    return obj_match
 
 
-def correct_shift(pc_shift, current_objects, obj_id1, global_shift, record):
+def correct_shift(local_shift, current_objects, obj_id1, global_shift, record,
+                  params):
     """Takes in flow vector based on local phase correlation (see
     get_std_flow) and compares it to the last headings of the object and
     the global_shift vector for that timestep. Corrects accordingly.
@@ -188,38 +173,38 @@ def correct_shift(pc_shift, current_objects, obj_id1, global_shift, record):
         last_heads = np.round(last_heads * record.interval_ratio, 2)
 
     if len(last_heads) == 0:
-        if shifts_disagree(pc_shift, global_shift, record, MAX_SHIFT_DISP):
+        if shifts_disagree(local_shift, global_shift, record, params):
             case = 0
             corrected_shift = global_shift
         else:
             case = 1
-            corrected_shift = (pc_shift + global_shift)/2
+            corrected_shift = (local_shift + global_shift)/2
 
-    elif shifts_disagree(pc_shift, last_heads, record, MAX_SHIFT_DISP):
-        if shifts_disagree(pc_shift, global_shift, record, MAX_SHIFT_DISP):
+    elif shifts_disagree(local_shift, last_heads, record, params):
+        if shifts_disagree(local_shift, global_shift, record, params):
             case = 2
             corrected_shift = last_heads
         else:
             case = 3
-            corrected_shift = pc_shift
+            corrected_shift = local_shift
 
     else:
         case = 4
-        corrected_shift = (pc_shift + last_heads)/2
+        corrected_shift = (local_shift + last_heads)/2
 
     corrected_shift = np.round(corrected_shift, 2)
 
     record.count_case(case)
     record.record_shift(corrected_shift, global_shift,
-                        last_heads, pc_shift, case)
-    return corrected_shift, record
+                        last_heads, local_shift, case)
+    return corrected_shift
 
 
-def shifts_disagree(shift1, shift2, record, thresh):
+def shifts_disagree(shift1, shift2, record, params):
     shift1 = shift1*record.grid_size[1:]
     shift2 = shift2*record.grid_size[1:]
     shift_disparity = euclidean_dist(shift1, shift2)
-    return shift_disparity/record.interval.seconds > thresh
+    return shift_disparity/record.interval.seconds > params['MAX_SHIFT_DISP']
 
 
 def get_objExtent(labeled_image, obj_label):
@@ -238,10 +223,11 @@ def get_objExtent(labeled_image, obj_label):
     return obj_extent
 
 
-def get_ambient_flow(obj_extent, img1, img2, margin):
+def get_ambient_flow(obj_extent, img1, img2, params):
     """Takes in object extent and two images and returns ambient flow. Margin
     is the additional region around the object used to compute the flow
     vectors."""
+    margin = params['FLOW_MARGIN']
     row_lb = obj_extent['obj_center'][0] - obj_extent['obj_radius'] - margin
     row_ub = obj_extent['obj_center'][0] + obj_extent['obj_radius'] + margin
     col_lb = obj_extent['obj_center'][1] - obj_extent['obj_radius'] - margin
@@ -310,22 +296,23 @@ def fft_shift(fft_mat):
         return
 
 
-def get_global_shift(im1, im2, magnitude):
+def get_global_shift(im1, im2, params):
     """Returns standardazied global shift vector. im1 and im2 are full frames
     of raw DBZ values."""
     if im2 is None:
         return None
+    magnitude = params['MAX_FLOW_MAG']
     shift = fft_flowvectors(im1, im2)
     shift[shift > magnitude] = magnitude
     shift[shift < -magnitude] = -magnitude
     return shift
 
 
-def predict_searchExtent(obj1_extent, shift, search_radius):
+def predict_search_extent(obj1_extent, shift, params):
     """Predicts search extent/region for the object in image2 given the image
     shift."""
     shifted_center = obj1_extent['obj_center'] + shift
-
+    search_radius = params['SEARCH_MARGIN']
     x1 = shifted_center[0] - search_radius
     x2 = shifted_center[0] + search_radius + 1
     y1 = shifted_center[1] - search_radius
@@ -388,10 +375,10 @@ def get_disparity_all(obj_found, image2, search_box, obj1_extent):
     return disparity
 
 
-def save_obj_match(obj_id1, obj_found, disparity, obj_match):
+def save_obj_match(obj_id1, obj_found, disparity, obj_match, params):
     """Saves disparity values in obj_match matrix. If disparity is greater than
     MAX_DISPARITY, saves a large number."""
-    disparity[disparity > MAX_DISPARITY] = LARGE_NUM
+    disparity[disparity > params['MAX_DISPARITY']] = LARGE_NUM
     if np.max(obj_found) > 0:
         obj_found = obj_found[obj_found > 0]
         obj_found = obj_found - 1
@@ -499,9 +486,11 @@ def check_merging(dead_obj_id1, current_objects, obj_props):
         return current_objects['uid'][product_id1]
 
 
-def check_isolation(raw, filtered):
+def check_isolation(raw, filtered, params):
     nobj = np.max(filtered)
-    iso_filtered = get_filtered_frame(raw, MIN_SIZE, ISO_THRESH)
+    iso_filtered = get_filtered_frame(raw,
+                                      params['MIN_SIZE'],
+                                      params['ISO_THRESH'])
     nobj_iso = np.max(iso_filtered)
     iso = np.empty(nobj, dtype='bool')
 
@@ -610,7 +599,7 @@ def update_current_objects(frame1, frame2, pairs, old_objects, counter):
     return current_objects, counter
 
 
-def get_objectProp(image1, grid1, field, record):
+def get_object_prop(image1, grid1, field, record, params):
     """Returns dictionary of object properties for all objects found in
     image1."""
     id1 = []
@@ -653,14 +642,14 @@ def get_objectProp(image1, grid1, field, record):
 
         obj_slices = [raw3D[:, ind[0], ind[1]] for ind in obj_index]
         field_max.append(np.max(obj_slices))
-        filtered_slices = [obj_slice > FIELD_THRESH
+        filtered_slices = [obj_slice > params['FIELD_THRESH']
                            for obj_slice in obj_slices]
         heights = [np.arange(raw3D.shape[0])[ind] for ind in filtered_slices]
         max_height.append(np.max(np.concatenate(heights)) * unit_alt)
         volume.append(np.sum(filtered_slices) * unit_vol)
 
     # cell isolation
-    isolation = check_isolation(raw3D, image1)
+    isolation = check_isolation(raw3D, image1, params)
 
     objprop = {'id1': id1,
                'center': center,
@@ -680,7 +669,7 @@ def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
     """Creates gif animation of tracked cells."""
     grid_size = tobj.grid_size
     nframes = tobj.tracks.index.levels[0].max() + 1
-    print('Animating', nframes, 'frames.')
+    print('Animating', nframes, 'frames')
 
     def animate_frame(enum_grid):
         """ Animate a single frame of gridded reflectivity including
@@ -752,8 +741,18 @@ class Counter(object):
 
 
 class Record(object):
-    """Record objects keep track of shift correction at each timestep. They
-    also hold information about the time of each scan."""
+    """
+    Record objects keep track of shift correction at each timestep. They also
+    hold information about the time of each scan.
+
+    Shift Correction Case Guide:
+    case0 - new object, local_shift and global_shift disagree, returns global
+    case1 - new object, returns local_shift
+    case2 - local disagrees with last head and global, returns last head
+    case3 - local disagrees with last head, returns local
+    case4 - local and last head agree, returns average of both
+    case5 - flow regions empty or at edge of frame, returns global_shift
+    """
     def __init__(self, grid_obj):
         self.scan = -1
         self.time = None
@@ -770,15 +769,7 @@ class Record(object):
         shift correction process."""
         self.correction_tally['case' + str(case_num)] += 1
 
-    # Shift Correction Case Guide:
-    # case0 - new object, local_shift and global_shift disagree, returns global
-    # case1 - new object, returns local_shift
-    # case2 - local disagrees with last head and global, returns last head
-    # case3 - local disagrees with last head, returns local
-    # case4 - local and last head agree, returns average of both
-    # case5 - flow regions empty or at edge of frame, returns global_shift
-
-    def record_shift(self, corr, gl_shift, l_heads, pc_shift, case):
+    def record_shift(self, corr, gl_shift, l_heads, local_shift, case):
         """Records corrected shift, phase shift, global shift, and last heads
         per object per timestep. This information can be used to monitor and
         refine the shift correction algorithm in the correct_shift function."""
@@ -791,7 +782,7 @@ class Record(object):
         new_shift_record['corrected'] = [corr]
         new_shift_record['global'] = [gl_shift]
         new_shift_record['last_heads'] = [l_heads]
-        new_shift_record['phase'] = [pc_shift]
+        new_shift_record['phase'] = [local_shift]
         new_shift_record['case'] = [case]
 
         self.new_shifts = self.new_shifts.append(new_shift_record)
@@ -827,10 +818,18 @@ class Cell_tracks(object):
     objects to be built using lists of pyart grid objects."""
 
     def __init__(self, field='reflectivity'):
-        self.__params = None
+        self.params = {'FIELD_THRESH': 32,
+                       'MIN_SIZE': 16,
+                       'SEARCH_MARGIN': 8,
+                       'FLOW_MARGIN': 20,
+                       'MAX_FLOW_MAG': 50,
+                       'MAX_DISPARITY': 999,
+                       'MAX_SHIFT_DISP': 15,
+                       'NEAR_THRESH': 4,
+                       'ISO_THRESH': 8}
+
         self.field = field
         self.grid_size = None
-#        self.grids = []
         self.last_grid = None
         self.counter = None
         self.record = None
@@ -840,26 +839,6 @@ class Cell_tracks(object):
         self.__saved_record = None
         self.__saved_counter = None
         self.__saved_objects = None
-
-    def __save_params(self):
-        self.__params = {'FIELD_THRESH': FIELD_THRESH,
-                         'MIN_SIZE': MIN_SIZE,
-                         'SEARCH_MARGIN': SEARCH_MARGIN,
-                         'FLOW_MARGIN': FLOW_MARGIN,
-                         'MAX_FLOW_MAG': MAX_FLOW_MAG,
-                         'MAX_DISPARITY': MAX_DISPARITY,
-                         'MAX_SHIFT_DISP': MAX_SHIFT_DISP}
-
-    def print_params(self):
-        """prints tracking parameters"""
-        if self.__params is None:
-            print('this object is empty')
-        else:
-            print('tracking paramters used for this object')
-            for key, val in self.__params.items():
-                print(key + ':', val)
-            print('\n')
-        return
 
     def __save(self):
         """Saves deep copies of record, counter, and current_objects."""
@@ -883,7 +862,6 @@ class Cell_tracks(object):
         primary method of the tracks class. This method makes use of all of the
         functions and helper classes defined above."""
         start_time = datetime.datetime.now()
-        self.__save_params()
 
         if self.record is None:
             # tracks object being initialized
@@ -901,7 +879,8 @@ class Cell_tracks(object):
         else:
             newRain = False
 
-        raw2, frame2 = extract_grid_data(grid_obj2, self.field, self.grid_size)
+        raw2, frame2 = extract_grid_data(grid_obj2, self.field, self.grid_size,
+                                         self.params)
 
         while grid_obj2 is not None:
             grid_obj1 = grid_obj2
@@ -917,7 +896,8 @@ class Cell_tracks(object):
                 self.record.update_scan_and_time(grid_obj1, grid_obj2)
                 raw2, frame2 = extract_grid_data(grid_obj2,
                                                  self.field,
-                                                 self.grid_size)
+                                                 self.grid_size,
+                                                 self.params)
             else:
                 # setup to write final scan
                 self.__save()
@@ -932,12 +912,13 @@ class Cell_tracks(object):
                 self.current_objects = None
                 continue
 
-            global_shift = get_global_shift(raw1, raw2, MAX_FLOW_MAG)
-            pairs, record = get_pairs(frame1,
-                                      frame2,
-                                      global_shift,
-                                      self.current_objects,
-                                      self.record)
+            global_shift = get_global_shift(raw1, raw2, self.params)
+            pairs = get_pairs(frame1,
+                              frame2,
+                              global_shift,
+                              self.current_objects,
+                              self.record,
+                              self.params)
 
             if newRain:
                 # first nonempty scan after a period of empty scans
@@ -957,7 +938,8 @@ class Cell_tracks(object):
                     self.counter
                 )
 
-            obj_props = get_objectProp(frame1, grid_obj1, self.field, record)
+            obj_props = get_object_prop(frame1, grid_obj1, self.field,
+                                        self.record, self.params)
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
