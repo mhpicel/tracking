@@ -11,6 +11,7 @@ import gc
 import string
 import matplotlib.pyplot as plt
 from matplotlib import animation
+from numba import jit, njit
 import numpy as np
 import pandas as pd
 from scipy import ndimage, optimize
@@ -51,11 +52,7 @@ def parse_grid_datetime(grid_obj):
 
 def get_vert_projection(grid, thresh=40):
     """Returns binary vertical projection from grid."""
-    projection = np.empty_like(grid[0, :, :])
-    for i in range(grid.shape[1]):
-        for j in range(grid.shape[2]):
-            projection[i, j] = np.any(grid[:, i, j] > thresh)
-    return projection
+    return np.any(grid > thresh, axis=0)
 
 
 def get_grid_size(grid_obj):
@@ -153,7 +150,7 @@ def locate_allObjects(image1, image2, global_shift, current_objects, record):
                         LARGE_NUM, dtype='f')
 
     for obj_id1 in np.arange(nobj1) + 1:
-        obj1_extent = get_objExtent(image1, obj_id1)
+        obj1_extent = get_obj_extent(image1, obj_id1)
         shift = get_ambient_flow(obj1_extent, image1, image2, FLOW_MARGIN)
         if shift is None:
             record.count_case(5)
@@ -222,7 +219,7 @@ def shifts_disagree(shift1, shift2, record, thresh):
     return shift_disparity/record.interval.seconds > thresh
 
 
-def get_objExtent(labeled_image, obj_label):
+def get_obj_extent(labeled_image, obj_label):
     """Takes in labeled image and finds the radius, area, and center of the
     given object."""
     obj_index = np.argwhere(labeled_image == obj_label)
@@ -406,7 +403,7 @@ def get_disparity(obj_found, image2, search_box, obj1_extent):
     # dist_actual = np.empty(0)
     change = np.empty(0)
     for target_obj in obj_found:
-        target_extent = get_objExtent(image2, target_obj)
+        target_extent = get_obj_extent(image2, target_obj)
         euc_dist = euclidean_dist(target_extent['obj_center'],
                                   search_box['center_pred'])
         dist_pred = np.append(dist_pred, euc_dist)
@@ -506,14 +503,32 @@ def check_isolation(raw, filtered):
     iso = np.empty(nobj, dtype='bool')
 
     for iso_id in np.arange(nobj_iso) + 1:
-        objects = np.unique(filtered[np.where(iso_filtered == iso_id)])
+        obj_ind = np.where(iso_filtered == iso_id)
+        objects = np.unique(filtered[obj_ind])
         objects = objects[objects != 0]
-        if len(objects) == 1:
+        if len(objects) == 1 and single_max(obj_ind, raw):
             iso[objects - 1] = True
         else:
             iso[objects - 1] = False
     return iso
 
+
+def single_max(obj_ind, raw):
+    max_proj = np.max(raw, axis=0)
+    smooth = ndimage.filters.gaussian_filter(max_proj, 0.5)
+    padded = np.pad(smooth, 1, mode='constant')
+    obj_ind = [axis + 1 for axis in obj_ind]  # adjust for padding
+    maxima = 0
+    for pixel in range(len(obj_ind[0])):
+        ind_0 = obj_ind[0][pixel]
+        ind_1 = obj_ind[1][pixel]
+        neighborhood = padded[(ind_0-1):(ind_0+2), (ind_1-1):(ind_1+2)]
+        max_ind = np.unravel_index(neighborhood.argmax(), neighborhood.shape)
+        if max_ind == (1, 1):
+            maxima += 1
+            if maxima > 1:
+                return False
+    return True
 
 # def check_isolation(raw, filtered):
 #    nobj = np.max(filtered)
@@ -961,7 +976,7 @@ class Cell_tracks(object):
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
-            gc.collect()
+#            gc.collect()
             # scan loop end
         self.__load()
         time_elapsed = datetime.datetime.now() - start_time
