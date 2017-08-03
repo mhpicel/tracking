@@ -976,7 +976,7 @@ class Cell_tracks(object):
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
-#            gc.collect()
+            gc.collect()
             # scan loop end
         self.__load()
         time_elapsed = datetime.datetime.now() - start_time
