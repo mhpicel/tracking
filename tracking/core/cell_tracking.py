@@ -846,7 +846,7 @@ class Cell_tracks(object):
         self.field = field
         self.grid_size = None
 #        self.grids = []
-        self.last_grid = None
+#        self.last_grid = None
         self.counter = None
         self.record = None
         self.current_objects = None
@@ -900,16 +900,18 @@ class Cell_tracks(object):
         start_time = datetime.datetime.now()
         self.__save_params()
 
-        if self.record is None:
+#        if self.record is None:
             # tracks object being initialized
-            grid_obj2 = next(grids)
-            self.grid_size = get_grid_size(grid_obj2)
-            self.counter = Counter()
-            self.record = Record(grid_obj2)
-        else:
-            # tracks object being updated
-            grid_obj2 = self.last_grid
-            self.tracks.drop(self.record.scan + 1)  # last scan is overwritten
+
+        grid_obj2 = next(grids)
+        self.grid_size = get_grid_size(grid_obj2)
+        self.counter = Counter()
+        self.record = Record(grid_obj2)
+
+#        else:
+#            # tracks object being updated
+#            grid_obj2 = self.last_grid
+#            self.tracks.drop(self.record.scan + 1)  # last scan is overwritten
 
         if self.current_objects is None:
             newRain = True
@@ -936,7 +938,7 @@ class Cell_tracks(object):
             else:
                 # setup to write final scan
                 self.__save()
-                self.last_grid = grid_obj1
+#                self.last_grid = grid_obj1
                 self.record.update_scan_and_time(grid_obj1)
                 raw2 = None
                 frame2 = np.zeros_like(frame1)
