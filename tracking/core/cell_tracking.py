@@ -442,7 +442,7 @@ def get_sizeChange(size1, size2):
 def write_tracks(old_tracks, record, current_objects, obj_props):
     """Writes x and y grid position to tracks dataframe for each object present
     in scan."""
-    print('Writing tracks for scan', record.scan)
+    #print('Writing tracks for scan', record.scan)
 
     nobj = len(obj_props['id1'])
     scan_num = [record.scan] * nobj
@@ -515,7 +515,7 @@ def check_isolation(raw, filtered):
 
 def single_max(obj_ind, raw):
     max_proj = np.max(raw, axis=0)
-    smooth = ndimage.filters.gaussian_filter(max_proj, 0.5)
+    smooth = ndimage.filters.gaussian_filter(max_proj, 3)
     padded = np.pad(smooth, 1, mode='constant')
     obj_ind = [axis + 1 for axis in obj_ind]  # adjust for padding
     maxima = 0
@@ -943,7 +943,7 @@ class Cell_tracks(object):
 
             if np.max(frame1) == 0:
                 newRain = True
-                print('No cells found in scan', self.record.scan)
+                #print('No cells found in scan', self.record.scan)
                 self.current_objects = None
                 continue
 
