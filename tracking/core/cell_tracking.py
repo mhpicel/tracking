@@ -978,6 +978,7 @@ class Cell_tracks(object):
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
+            del grid_obj1, raw1, frame1
             gc.collect()
             # scan loop end
         self.__load()
