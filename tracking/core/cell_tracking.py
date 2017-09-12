@@ -20,12 +20,14 @@ import pyart
 # Global Constants
 LARGE_NUM = 1000
 
+# Parameter Defaults
+
 
 def parse_grid_datetime(grid_obj):
     """Obtains datetime object from pyart grid_object."""
     date = grid_obj.time['units'][14:24]
     time = grid_obj.time['units'][25:-1]
-    dt = datetime.datetime.strptime(date + ' ' + time, '%Y-%m-%d `%H:%M:%S')
+    dt = datetime.datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M:%S')
     return dt
 
 
@@ -633,8 +635,14 @@ def get_object_prop(image1, grid1, field, record, params):
         area.append(obj_index.shape[0] * unit_area)
 
         rounded = np.round(this_centroid).astype('i')
-        lon = grid1.get_point_longitude_latitude()[0][rounded[0], rounded[1]]
-        lat = grid1.get_point_longitude_latitude()[1][rounded[0], rounded[1]]
+        cent_met = np.array([grid1.y['data'][rounded[0]],
+                             grid1.x['data'][rounded[1]]])
+
+        projparams = grid1.get_projparams()
+        lon, lat = pyart.core.transforms.cartesian_to_geographic(cent_met[1],
+                                                                 cent_met[0],
+                                                                 projparams)
+
         longitude.append(np.round(lon, 4))
         latitude.append(np.round(lat, 4))
 
@@ -943,7 +951,8 @@ class Cell_tracks(object):
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
-            gc.collect()
+#            gc.collect()
+            del grid_obj1, raw1, frame1, global_shift, pairs, obj_props
             # scan loop end
         self.__load()
         time_elapsed = datetime.datetime.now() - start_time
