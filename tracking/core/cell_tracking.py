@@ -21,6 +21,15 @@ import pyart
 LARGE_NUM = 1000
 
 # Parameter Defaults
+FIELD_THRESH = 32
+ISO_THRESH = 8
+MIN_SIZE = 32
+NEAR_THRESH = 4
+SEARCH_MARGIN = 8
+FLOW_MARGIN = 20
+MAX_DISPARITY = 999
+MAX_FLOW_MAG = 50
+MAX_SHIFT_DISP = 15
 
 
 def parse_grid_datetime(grid_obj):
@@ -33,10 +42,6 @@ def parse_grid_datetime(grid_obj):
 
 def get_vert_projection(grid, thresh=40):
     """Returns binary vertical projection from grid."""
-#    projection = np.empty_like(grid[0, :, :])
-#    for i in range(grid.shape[1]):
-#        for j in range(grid.shape[2]):
-#            projection[i, j] = np.any(grid[:, i, j] > thresh)
     return np.any(grid > thresh, axis=0)
 
 
@@ -365,15 +370,7 @@ def get_disparity_all(obj_found, image2, search_box, obj1_extent):
         obj_found = obj_found[obj_found > 0]
         disparity = get_disparity(obj_found, image2,
                                   search_box, obj1_extent)
-#        obj_found = obj_found[obj_found > 0]
-#        if len(obj_found) == 1:
-#            disparity = get_disparity(obj_found, image2,
-#                                      search_box, obj1_extent)
-#            if disparity <= 3:
-#                disparity = np.array([0])
-#        else:
-#            disparity = get_disparity(obj_found, image2,
-#                                      search_box, obj1_extent)
+
     return disparity
 
 
@@ -506,22 +503,22 @@ def check_isolation(raw, filtered, params):
     return iso
 
 
-# def check_isolation(raw, filtered):
-#    nobj = np.max(filtered)
-#    iso_filtered = get_filtered_frame(raw, MIN_SIZE, ISO_THRESH)
-#    nobj_iso = np.max(iso_filtered)
-#    iso = np.empty(nobj, dtype='bool')
-#
-#    for iso_id in np.arange(nobj_iso) + 1:
-#        objects = filtered[np.where(iso_filtered == iso_id)]
-#        ids = np.unique(objects)
-#        ids = ids[ids != 0]
-#        if len(ids) == 1:
-#            if np.sum(objects == 0)/len(objects) < 0.7:
-#                iso[ids - 1] = True
-#        else:
-#            iso[ids - 1] = False
-#    return iso
+def single_max(obj_ind, raw):
+    max_proj = np.max(raw, axis=0)
+    smooth = ndimage.filters.gaussian_filter(max_proj, 3)
+    padded = np.pad(smooth, 1, mode='constant')
+    obj_ind = [axis + 1 for axis in obj_ind]  # adjust for padding
+    maxima = 0
+    for pixel in range(len(obj_ind[0])):
+        ind_0 = obj_ind[0][pixel]
+        ind_1 = obj_ind[1][pixel]
+        neighborhood = padded[(ind_0-1):(ind_0+2), (ind_1-1):(ind_1+2)]
+        max_ind = np.unravel_index(neighborhood.argmax(), neighborhood.shape)
+        if max_ind == (1, 1):
+            maxima += 1
+            if maxima > 1:
+                return False
+    return True
 
 
 def init_uids(first_frame, second_frame, pairs, counter):
@@ -826,15 +823,15 @@ class Cell_tracks(object):
     objects to be built using lists of pyart grid objects."""
 
     def __init__(self, field='reflectivity'):
-        self.params = {'FIELD_THRESH': 32,
-                       'MIN_SIZE': 16,
-                       'SEARCH_MARGIN': 8,
-                       'FLOW_MARGIN': 20,
-                       'MAX_FLOW_MAG': 50,
-                       'MAX_DISPARITY': 999,
-                       'MAX_SHIFT_DISP': 15,
-                       'NEAR_THRESH': 4,
-                       'ISO_THRESH': 8}
+        self.params = {'FIELD_THRESH': FIELD_THRESH,
+                       'MIN_SIZE': MIN_SIZE,
+                       'SEARCH_MARGIN': SEARCH_MARGIN,
+                       'FLOW_MARGIN': FLOW_MARGIN,
+                       'MAX_FLOW_MAG': MAX_FLOW_MAG,
+                       'MAX_DISPARITY': MAX_DISPARITY,
+                       'MAX_SHIFT_DISP': MAX_SHIFT_DISP,
+                       'NEAR_THRESH': NEAR_THRESH,
+                       'ISO_THRESH': ISO_THRESH}
 
         self.field = field
         self.grid_size = None
