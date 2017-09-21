@@ -100,6 +100,9 @@ def attach_last_heads(frame1, frame2, current_objects):
 
 
 def check_isolation(raw, filtered, params):
+    """Returns list of booleans indicating object isolation. Isolated objects
+    are not connected to any other objects by pixels greater than ISO_THRESH,
+    and have at most one peak."""
     nobj = np.max(filtered)
     iso_filtered = get_filtered_frame(raw,
                                       params['MIN_SIZE'],
@@ -118,6 +121,7 @@ def check_isolation(raw, filtered, params):
 
 
 def single_max(obj_ind, raw):
+    """Returns True if object has at most one peak."""
     max_proj = np.max(raw, axis=0)
     smooth = ndimage.filters.gaussian_filter(max_proj, 3)
     padded = np.pad(smooth, 1, mode='constant')
@@ -208,8 +212,7 @@ def get_object_prop(image1, grid1, field, record, params):
 
 
 def write_tracks(old_tracks, record, current_objects, obj_props):
-    """Writes x and y grid position to tracks dataframe for each object present
-    in scan."""
+    """Writes all cell information to tracks dataframe."""
     print('Writing tracks for scan', record.scan)
 
     nobj = len(obj_props['id1'])

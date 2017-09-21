@@ -1,4 +1,12 @@
+"""
+tint.matching
+=============
+
+Functions for object matching between adjacent radar scans.
+"""
+
 import numpy as np
+
 from scipy import optimize
 
 from .phase_correlation import get_ambient_flow
@@ -40,6 +48,8 @@ def find_objects(search_box, image2):
 
 
 def shifts_disagree(shift1, shift2, record, params):
+    """Returns True if shift disparity greater than MAX_SHIFT_DISP parameter.
+    """
     shift1 = shift1*record.grid_size[1:]
     shift2 = shift2*record.grid_size[1:]
     shift_disparity = euclidean_dist(shift1, shift2)

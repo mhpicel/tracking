@@ -1,3 +1,8 @@
+"""
+tint.helpers
+============
+"""
+
 import numpy as np
 import pandas as pd
 import string
@@ -5,10 +10,17 @@ from .grid_utils import parse_grid_datetime, get_grid_size
 
 
 class Counter(object):
-    """This is a helper class for the get_tracks method in the Cell_tracks
-    class. Counter objects generate and keep track of unique cell ids. This
-    class will further developed when merging and splitting functionality is
-    improved."""
+    """Counter objects generate and keep track of unique cell ids.
+    Currently only the uid attribute is used, but this framework can accomodate
+    further development of merge/split detection.
+
+    Attributes
+    ----------
+    uid: int
+        Last uid assigned.
+    cid: dict
+        Record of cell genealogy.
+    """
 
     def __init__(self):
         """uid is an integer that tracks the number of independently formed
@@ -35,8 +47,28 @@ class Counter(object):
 
 class Record(object):
     """
-    Record objects keep track of shift correction at each timestep. They also
-    hold information about the time of each scan.
+    Record objects keep track of information related to the shift correction
+    process.
+
+    Attributes
+    ----------
+    scan: int
+        Index of the current scan.
+    time: datetime
+        Time corresponding to scan.
+    interval: timedelta
+        Temporal difference between the next scan and the current scan.
+    interval_ratio: float
+        Ratio of current interval to previous interval.
+    grid_size: array of floats
+        Length 3 array containing z, y, and x mesh size in meters.
+    shifts: dataframe
+        Records inputs of shift correction process. See matching.correct_shift.
+    new_shfits: dataframe
+        Row of new shifts to be added to shifts dataframe.
+    correction_tally: dict
+        Tallies correction cases for performance analysis.
+
 
     Shift Correction Case Guide:
     case0 - new object, local_shift and global_shift disagree, returns global
@@ -46,6 +78,7 @@ class Record(object):
     case4 - local and last head agree, returns average of both
     case5 - flow regions empty or at edge of frame, returns global_shift
     """
+
     def __init__(self, grid_obj):
         self.scan = -1
         self.time = None

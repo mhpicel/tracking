@@ -1,3 +1,10 @@
+"""
+tint.phase_correlation
+======================
+
+
+"""
+
 import numpy as np
 from scipy import ndimage
 

@@ -1,3 +1,12 @@
+"""
+tint.grid_utils
+===============
+
+Tools for pulling data from pyart grids.
+
+
+"""
+
 import numpy as np
 import pandas as pd
 import datetime
@@ -13,7 +22,7 @@ def parse_grid_datetime(grid_obj):
 
 
 def get_grid_size(grid_obj):
-    """calculates grid size per dimension given a grid object."""
+    """Calculates grid size per dimension given a grid object."""
     z_len = grid_obj.z['data'][-1] - grid_obj.z['data'][0]
     x_len = grid_obj.x['data'][-1] - grid_obj.x['data'][0]
     y_len = grid_obj.y['data'][-1] - grid_obj.y['data'][0]
@@ -24,11 +33,12 @@ def get_grid_size(grid_obj):
 
 
 def get_grid_alt(grid_size, alt_meters=1500):
+    """Returns z-index closest to alt_meters."""
     return np.int(np.round(alt_meters/grid_size[0]))
 
 
 def get_vert_projection(grid, thresh=40):
-    """Returns binary vertical projection from grid."""
+    """Returns boolean vertical projection from grid."""
     return np.any(grid > thresh, axis=0)
 
 
@@ -55,6 +65,8 @@ def clear_small_echoes(label_image, min_size):
 
 
 def extract_grid_data(grid_obj, field, grid_size, params):
+    """Returns filtered grid frame and raw grid slice at global shift
+    altitude."""
     masked = grid_obj.fields[field]['data']
     masked.data[masked.data == masked.fill_value] = 0
     gs_alt = params['GS_ALT']
