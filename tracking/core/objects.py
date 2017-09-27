@@ -1,3 +1,11 @@
+"""
+tint.objects
+============
+
+Functions for managing and recording object properties.
+"""
+
+
 import numpy as np
 import pandas as pd
 from scipy import ndimage

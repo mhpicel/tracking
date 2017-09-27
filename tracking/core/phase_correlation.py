@@ -2,7 +2,8 @@
 tint.phase_correlation
 ======================
 
-
+Functions for performing phase correlation. Used to predict cell movement
+between scans.
 """
 
 import numpy as np

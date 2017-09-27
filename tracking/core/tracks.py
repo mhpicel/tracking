@@ -1,6 +1,8 @@
 """
 tint.tracks
 ===========
+
+Cell_tracks class.
 """
 
 
@@ -16,7 +18,7 @@ from .matching import get_pairs
 from .objects import init_current_objects, update_current_objects
 from .objects import get_object_prop, write_tracks
 
-# Parameter Defaults
+# Tracking Parameter Defaults
 FIELD_THRESH = 32
 ISO_THRESH = 8
 MIN_SIZE = 32
@@ -28,10 +30,70 @@ MAX_FLOW_MAG = 50
 MAX_SHIFT_DISP = 15
 GS_ALT = 1500
 
+"""
+Tracking Parameter Guide
+------------------------
+
+FIELD_THRESH : units of 'field' attribute
+    The threshold used for object detection. Detected objects are connnected
+    pixels above this threshold.
+ISO_THRESH : units of 'field' attribute
+    Used in isolated cell classification. Isolated cells must not be connected
+    to any other cell by contiguous pixels above this threshold.
+MIN_SIZE : pixels
+    The minimum size threshold in pixels for an object to be detected.
+SEARCH_MARGIN : pixels
+    The radius of the search box around the predicted object center.
+FLOW_MARGIN : pixels
+    The margin size around the object extent on which to perform phase
+    correlation.
+MAX_DISPARITY : float
+    Maximum allowable disparity value. Larger disparity values are sent to
+    LARGE_NUM.
+MAX_FLOW_MAG : pixels
+    Maximum allowable global shift magnitude. See get_global_shift in
+    tint.phase_correlation.
+MAX_SHIFT_DISP : float
+    Maximum magnitude of difference in meters per second for two shifts to be
+    considered in agreement. See correct_shift in tint.matching.
+GS_ALT : meters
+    Altitude in meters at which to perform phase correlation for global shift
+    calculation. See correct_shift in tint.matching.
+"""
+
 
 class Cell_tracks(object):
     """This is the main class in the module. It allows tracks
-    objects to be built using lists of pyart grid objects."""
+    objects to be built using lists of pyart grid objects.
+
+    Attributes
+    ----------
+    params : dict
+        Parameters for the tracking algorithm.
+    field : str
+        String specifying pyart grid field to be used for tracking. Default is
+        'reflectivity'.
+    grid_size : array
+        Array containing z, y, and x mesh size in meters respectively.
+    last_grid : Grid
+        Contains the most recent grid object tracked. This is used for dynamic
+        updates.
+    counter : Counter
+        See Counter class.
+    record : Record
+        See Record class.
+    current_objects : dict
+        Contains information about objects in the current scan.
+    tracks : DataFrame
+
+    __saved_record : Record
+        Deep copy of Record at the penultimate scan in the sequence. This and
+        following 2 attributes used for link-up in dynamic updates.
+    __saved_counter : Counter
+        Deep copy of Counter.
+    __saved_objects : dict
+        Deep copy of current_objects.
+    """
 
     def __init__(self, field='reflectivity'):
         self.params = {'FIELD_THRESH': FIELD_THRESH,
@@ -41,7 +103,6 @@ class Cell_tracks(object):
                        'MAX_FLOW_MAG': MAX_FLOW_MAG,
                        'MAX_DISPARITY': MAX_DISPARITY,
                        'MAX_SHIFT_DISP': MAX_SHIFT_DISP,
-                       'NEAR_THRESH': NEAR_THRESH,
                        'ISO_THRESH': ISO_THRESH,
                        'GS_ALT': GS_ALT}
 
