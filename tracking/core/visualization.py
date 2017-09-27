@@ -1,3 +1,10 @@
+"""
+tint.visualization
+==================
+
+Visualization tools for tracks objects
+"""
+
 from matplotlib import pyplot as plt
 from matplotlib import animation
 import pyart
@@ -7,7 +14,24 @@ from .grid_utils import get_grid_alt
 
 
 def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
-    """Creates gif animation of tracked cells."""
+    """
+    Creates gif animation of tracked cells.
+
+    Parameters
+    ----------
+    tobj : Cell_tracks
+        The Cell_tracks object to be visualized.
+    grids : iterable
+        An iterable containing all of the grids used to generate tobj
+    outfile_name : str
+        The name of the output file to be produced.
+    arrows : bool
+        If True, draws arrow showing corrected shift for each object.
+    isolation : bool
+        If True, only annotates uids for isolated objects.
+    fps : int
+        Frames per second for output gif.
+    """
     grid_size = tobj.grid_size
     nframes = tobj.tracks.index.levels[0].max() + 1
     print('Animating', nframes, 'frames')
