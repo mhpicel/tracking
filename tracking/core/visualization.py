@@ -2,13 +2,15 @@
 tint.visualization
 ==================
 
-Visualization tools for tracks objects
+Visualization tools for tracks objects.
+
 """
 
-from matplotlib import pyplot as plt
-from matplotlib import animation
-import pyart
 import gc
+
+from matplotlib import animation
+from matplotlib import pyplot as plt
+import pyart
 
 from .grid_utils import get_grid_alt
 
@@ -31,7 +33,9 @@ def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
         If True, only annotates uids for isolated objects.
     fps : int
         Frames per second for output gif.
+
     """
+
     grid_size = tobj.grid_size
     nframes = tobj.tracks.index.levels[0].max() + 1
     print('Animating', nframes, 'frames')
