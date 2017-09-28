@@ -3,13 +3,14 @@ tint.tracks
 ===========
 
 Cell_tracks class.
+
 """
 
-
 import copy
+import datetime
+
 import numpy as np
 import pandas as pd
-import datetime
 
 from .grid_utils import get_grid_size, extract_grid_data
 from .helpers import Record, Counter
@@ -63,7 +64,8 @@ GS_ALT : meters
 
 
 class Cell_tracks(object):
-    """This is the main class in the module. It allows tracks
+    """
+    This is the main class in the module. It allows tracks
     objects to be built using lists of pyart grid objects.
 
     Attributes
@@ -93,6 +95,7 @@ class Cell_tracks(object):
         Deep copy of Counter.
     __saved_objects : dict
         Deep copy of current_objects.
+
     """
 
     def __init__(self, field='reflectivity'):
@@ -119,26 +122,26 @@ class Cell_tracks(object):
         self.__saved_objects = None
 
     def __save(self):
-        """Saves deep copies of record, counter, and current_objects."""
+        """ Saves deep copies of record, counter, and current_objects. """
         self.__saved_record = copy.deepcopy(self.record)
         self.__saved_counter = copy.deepcopy(self.counter)
         self.__saved_objects = copy.deepcopy(self.current_objects)
 
     def __load(self):
-        """Loads saved copies of record, counter, and current_objects. If new
+        """ Loads saved copies of record, counter, and current_objects. If new
         tracks are appended to existing tracks via the get_tracks method, the
         most recent scan prior to the addition must be overwritten to link up
         with the new scans. Because of this, record, counter and
         current_objects must be reverted to their state in the penultimate
-        iteration of the loop in get_tracks. See get_tracks for details."""
+        iteration of the loop in get_tracks. See get_tracks for details. """
         self.record = self.__saved_record
         self.counter = self.__saved_counter
         self.current_objects = self.__saved_objects
 
     def get_tracks(self, grids):
-        """Obtains tracks given a list of pyart grid objects. This is the
+        """ Obtains tracks given a list of pyart grid objects. This is the
         primary method of the tracks class. This method makes use of all of the
-        functions and helper classes defined above."""
+        functions and helper classes defined above. """
         start_time = datetime.datetime.now()
 
         if self.record is None:
@@ -221,7 +224,7 @@ class Cell_tracks(object):
             self.record.add_uids(self.current_objects)
             self.tracks = write_tracks(self.tracks, self.record,
                                        self.current_objects, obj_props)
-#            gc.collect()
+            #gc.collect()
             del grid_obj1, raw1, frame1, global_shift, pairs, obj_props
             # scan loop end
         self.__load()

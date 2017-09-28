@@ -4,6 +4,7 @@ tint.phase_correlation
 
 Functions for performing phase correlation. Used to predict cell movement
 between scans.
+
 """
 
 import numpy as np
@@ -11,9 +12,9 @@ from scipy import ndimage
 
 
 def get_ambient_flow(obj_extent, img1, img2, params):
-    """Takes in object extent and two images and returns ambient flow. Margin
+    """ Takes in object extent and two images and returns ambient flow. Margin
     is the additional region around the object used to compute the flow
-    vectors."""
+    vectors. """
     margin = params['FLOW_MARGIN']
     row_lb = obj_extent['obj_center'][0] - obj_extent['obj_radius'] - margin
     row_ub = obj_extent['obj_center'][0] + obj_extent['obj_radius'] + margin
@@ -33,12 +34,11 @@ def get_ambient_flow(obj_extent, img1, img2, params):
 
     flow_region1[flow_region1 != 0] = 1
     flow_region2[flow_region2 != 0] = 1
-
     return fft_flowvectors(flow_region1, flow_region2)
 
 
 def fft_flowvectors(im1, im2):
-    """Estimates flow vectors in two images using cross covariance."""
+    """ Estimates flow vectors in two images using cross covariance. """
     if (np.max(im1) == 0) or (np.max(im2) == 0):
         return None
 
@@ -52,7 +52,7 @@ def fft_flowvectors(im1, im2):
 
 
 def fft_crosscov(im1, im2):
-    """Computes cross correlation matrix using FFT method."""
+    """ Computes cross correlation matrix using FFT method. """
     fft1_conj = np.conj(np.fft.fft2(im1))
     fft2 = np.fft.fft2(im2)
     normalize = abs(fft2*fft1_conj)
@@ -64,9 +64,9 @@ def fft_crosscov(im1, im2):
 
 
 def fft_shift(fft_mat):
-    """Rearranges the cross correlation matrix so that 'zero' frequency or DC
+    """ Rearranges the cross correlation matrix so that 'zero' frequency or DC
     component is in the middle of the matrix. Taken from stackoverflow Que.
-    30630632."""
+    30630632. """
     if type(fft_mat) is np.ndarray:
         rd2 = np.int(fft_mat.shape[0]/2)
         cd2 = np.int(fft_mat.shape[1]/2)
@@ -84,8 +84,8 @@ def fft_shift(fft_mat):
 
 
 def get_global_shift(im1, im2, params):
-    """Returns standardazied global shift vector. im1 and im2 are full frames
-    of raw DBZ values."""
+    """ Returns standardazied global shift vector. im1 and im2 are full frames
+    of raw DBZ values. """
     if im2 is None:
         return None
     magnitude = params['MAX_FLOW_MAG']

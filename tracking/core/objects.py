@@ -3,29 +3,29 @@ tint.objects
 ============
 
 Functions for managing and recording object properties.
-"""
 
+"""
 
 import numpy as np
 import pandas as pd
-from scipy import ndimage
 import pyart
+from scipy import ndimage
 
 from .grid_utils import get_filtered_frame
 
 
 def get_object_center(obj_id, labeled_image):
-    """Returns index of center pixel of the given object id from labeled image.
-    The center is calculated as the median pixel of the object extent; it is
-    not a true centroid."""
+    """ Returns index of center pixel of the given object id from labeled
+    image. The center is calculated as the median pixel of the object extent;
+    it is not a true centroid. """
     obj_index = np.argwhere(labeled_image == obj_id)
     center = np.median(obj_index, axis=0).astype('i')
     return center
 
 
 def get_obj_extent(labeled_image, obj_label):
-    """Takes in labeled image and finds the radius, area, and center of the
-    given object."""
+    """ Takes in labeled image and finds the radius, area, and center of the
+    given object. """
     obj_index = np.argwhere(labeled_image == obj_label)
 
     xlength = np.max(obj_index[:, 0]) - np.min(obj_index[:, 0]) + 1
@@ -40,9 +40,9 @@ def get_obj_extent(labeled_image, obj_label):
 
 
 def init_current_objects(first_frame, second_frame, pairs, counter):
-    """Returns a dictionary for objects with unique ids and their corresponding
-    ids in frame1 and frame1. This function is called when echoes are detected
-    after a period of no echoes."""
+    """ Returns a dictionary for objects with unique ids and their
+    corresponding ids in frame1 and frame1. This function is called when
+    echoes are detected after a period of no echoes. """
     nobj = np.max(first_frame)
 
     id1 = np.arange(nobj) + 1
@@ -59,8 +59,8 @@ def init_current_objects(first_frame, second_frame, pairs, counter):
 
 
 def update_current_objects(frame1, frame2, pairs, old_objects, counter):
-    """Removes dead objects, updates living objects, and assigns new uids to
-    new-born objects."""
+    """ Removes dead objects, updates living objects, and assigns new uids to
+    new-born objects. """
     nobj = np.max(frame1)
     id1 = np.arange(nobj) + 1
     uid = np.array([], dtype='str')
@@ -91,7 +91,7 @@ def update_current_objects(frame1, frame2, pairs, old_objects, counter):
 
 
 def attach_last_heads(frame1, frame2, current_objects):
-    """attaches last heading information to current_objects dictionary."""
+    """ Attaches last heading information to current_objects dictionary. """
     nobj = len(current_objects['uid'])
     heads = np.ma.empty((nobj, 2))
     for obj in range(nobj):
@@ -108,9 +108,9 @@ def attach_last_heads(frame1, frame2, current_objects):
 
 
 def check_isolation(raw, filtered, params):
-    """Returns list of booleans indicating object isolation. Isolated objects
+    """ Returns list of booleans indicating object isolation. Isolated objects
     are not connected to any other objects by pixels greater than ISO_THRESH,
-    and have at most one peak."""
+    and have at most one peak. """
     nobj = np.max(filtered)
     iso_filtered = get_filtered_frame(raw,
                                       params['MIN_SIZE'],
@@ -129,7 +129,7 @@ def check_isolation(raw, filtered, params):
 
 
 def single_max(obj_ind, raw):
-    """Returns True if object has at most one peak."""
+    """ Returns True if object has at most one peak. """
     max_proj = np.max(raw, axis=0)
     smooth = ndimage.filters.gaussian_filter(max_proj, 3)
     padded = np.pad(smooth, 1, mode='constant')
@@ -148,8 +148,8 @@ def single_max(obj_ind, raw):
 
 
 def get_object_prop(image1, grid1, field, record, params):
-    """Returns dictionary of object properties for all objects found in
-    image1."""
+    """ Returns dictionary of object properties for all objects found in
+    image1. """
     id1 = []
     center = []
     grid_x = []
@@ -193,7 +193,6 @@ def get_object_prop(image1, grid1, field, record, params):
         latitude.append(np.round(lat[0], 4))
 
         # raw 3D grid stats
-
         obj_slices = [raw3D[:, ind[0], ind[1]] for ind in obj_index]
         field_max.append(np.max(obj_slices))
         filtered_slices = [obj_slice > params['FIELD_THRESH']
@@ -220,7 +219,7 @@ def get_object_prop(image1, grid1, field, record, params):
 
 
 def write_tracks(old_tracks, record, current_objects, obj_props):
-    """Writes all cell information to tracks dataframe."""
+    """ Writes all cell information to tracks dataframe. """
     print('Writing tracks for scan', record.scan)
 
     nobj = len(obj_props['id1'])

@@ -7,14 +7,15 @@ Tools for pulling data from pyart grids.
 
 """
 
+import datetime
+
 import numpy as np
 import pandas as pd
-import datetime
 from scipy import ndimage
 
 
 def parse_grid_datetime(grid_obj):
-    """Obtains datetime object from pyart grid_object."""
+    """ Obtains datetime object from pyart grid_object. """
     date = grid_obj.time['units'][14:24]
     time = grid_obj.time['units'][25:-1]
     dt = datetime.datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M:%S')
@@ -22,7 +23,7 @@ def parse_grid_datetime(grid_obj):
 
 
 def get_grid_size(grid_obj):
-    """Calculates grid size per dimension given a grid object."""
+    """ Calculates grid size per dimension given a grid object. """
     z_len = grid_obj.z['data'][-1] - grid_obj.z['data'][0]
     x_len = grid_obj.x['data'][-1] - grid_obj.x['data'][0]
     y_len = grid_obj.y['data'][-1] - grid_obj.y['data'][0]
@@ -33,18 +34,18 @@ def get_grid_size(grid_obj):
 
 
 def get_grid_alt(grid_size, alt_meters=1500):
-    """Returns z-index closest to alt_meters."""
+    """ Returns z-index closest to alt_meters. """
     return np.int(np.round(alt_meters/grid_size[0]))
 
 
 def get_vert_projection(grid, thresh=40):
-    """Returns boolean vertical projection from grid."""
+    """ Returns boolean vertical projection from grid. """
     return np.any(grid > thresh, axis=0)
 
 
 def get_filtered_frame(grid, min_size, thresh):
-    """Returns a labeled frame from gridded radar data. Smaller objects are
-    removed and the rest are labeled."""
+    """ Returns a labeled frame from gridded radar data. Smaller objects
+    are removed and the rest are labeled. """
     echo_height = get_vert_projection(grid, thresh)
     labeled_echo = ndimage.label(echo_height)[0]
     frame = clear_small_echoes(labeled_echo, min_size)
@@ -52,7 +53,7 @@ def get_filtered_frame(grid, min_size, thresh):
 
 
 def clear_small_echoes(label_image, min_size):
-    """Takes in binary image and clears objects less than min_size."""
+    """ Takes in binary image and clears objects less than min_size. """
     flat_image = pd.Series(label_image.flatten())
     flat_image = flat_image[flat_image > 0]
     size_table = flat_image.value_counts(sort=False)
@@ -65,8 +66,8 @@ def clear_small_echoes(label_image, min_size):
 
 
 def extract_grid_data(grid_obj, field, grid_size, params):
-    """Returns filtered grid frame and raw grid slice at global shift
-    altitude."""
+    """ Returns filtered grid frame and raw grid slice at global shift
+    altitude. """
     masked = grid_obj.fields[field]['data']
     masked.data[masked.data == masked.fill_value] = 0
     gs_alt = params['GS_ALT']
