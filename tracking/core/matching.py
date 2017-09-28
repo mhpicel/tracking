@@ -3,6 +3,7 @@ tint.matching
 =============
 
 Functions for object matching between adjacent radar scans.
+
 """
 
 import numpy as np
@@ -17,7 +18,7 @@ LARGE_NUM = 1000
 
 
 def euclidean_dist(vec1, vec2):
-    """Computes euclidean distance."""
+    """ Computes euclidean distance. """
     vec1 = np.array(vec1)
     vec2 = np.array(vec2)
     dist = np.sqrt(sum((vec1-vec2)**2))
@@ -25,8 +26,8 @@ def euclidean_dist(vec1, vec2):
 
 
 def get_sizeChange(size1, size2):
-    """Returns change in size of an echo as the ratio of the larger size to the
-    smaller, minus 1."""
+    """ Returns change in size of an echo as the ratio of the larger size to
+    the smaller, minus 1. """
     if (size1 < 5) and (size2 < 5):
         return 0
     elif size1 >= size2:
@@ -36,20 +37,19 @@ def get_sizeChange(size1, size2):
 
 
 def find_objects(search_box, image2):
-    """Identifies objects found in the search region."""
+    """ Identifies objects found in the search region. """
     if not search_box['valid']:
         obj_found = np.array(-1)
     else:
         search_area = image2[search_box['x1']:search_box['x2'],
                              search_box['y1']:search_box['y2']]
         obj_found = np.unique(search_area)
-
     return obj_found
 
 
 def shifts_disagree(shift1, shift2, record, params):
-    """Returns True if shift disparity greater than MAX_SHIFT_DISP parameter.
-    """
+    """ Returns True if shift disparity greater than MAX_SHIFT_DISP
+    parameter. """
     shift1 = shift1*record.grid_size[1:]
     shift2 = shift2*record.grid_size[1:]
     shift_disparity = euclidean_dist(shift1, shift2)
@@ -58,13 +58,12 @@ def shifts_disagree(shift1, shift2, record, params):
 
 def correct_shift(local_shift, current_objects, obj_id1, global_shift, record,
                   params):
-    """Takes in flow vector based on local phase correlation (see
+    """ Takes in flow vector based on local phase correlation (see
     get_std_flow) and compares it to the last headings of the object and
     the global_shift vector for that timestep. Corrects accordingly.
     Note: At the time of this function call, current_objects has not yet been
     updated for the current frame1 and frame2, so the id2s in current_objects
-    correspond to the objects in the current frame1."""
-
+    correspond to the objects in the current frame1. """
     if current_objects is None:
         last_heads = ()
     else:
@@ -101,8 +100,8 @@ def correct_shift(local_shift, current_objects, obj_id1, global_shift, record,
 
 
 def predict_search_extent(obj1_extent, shift, params):
-    """Predicts search extent/region for the object in image2 given the image
-    shift."""
+    """ Predicts search extent/region for the object in image2 given
+    the image shift. """
     shifted_center = obj1_extent['obj_center'] + shift
     search_radius = params['SEARCH_MARGIN']
     x1 = shifted_center[0] - search_radius
@@ -113,14 +112,13 @@ def predict_search_extent(obj1_extent, shift, params):
     x2 = np.int(x2)
     y1 = np.int(y1)
     y2 = np.int(y2)
-
     return {'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2,
             'center_pred': shifted_center, 'valid': True}
 
 
 def check_search_box(search_box, img_dims):
-    """Checks if search_box is within the boundaries of the frame. Clips to
-    edges of frame if out of bounds. Marks as invalid if too small."""
+    """ Checks if search_box is within the boundaries of the frame. Clips to
+    edges of frame if out of bounds. Marks as invalid if too small. """
     if search_box['x1'] < 0:
         search_box['x1'] = 0
     if search_box['y1'] < 0:
@@ -136,7 +134,7 @@ def check_search_box(search_box, img_dims):
 
 
 def get_disparity(obj_found, image2, search_box, obj1_extent):
-    """Computes disparities for objects in obj_found."""
+    """ Computes disparities for objects in obj_found. """
     dist_pred = np.empty(0)
     # dist_actual = np.empty(0)
     change = np.empty(0)
@@ -159,20 +157,19 @@ def get_disparity(obj_found, image2, search_box, obj1_extent):
 
 
 def get_disparity_all(obj_found, image2, search_box, obj1_extent):
-    """Returns disparities of all objects found within the search box."""
+    """ Returns disparities of all objects found within the search box. """
     if np.max(obj_found) <= 0:
         disparity = np.array([LARGE_NUM])
     else:
         obj_found = obj_found[obj_found > 0]
         disparity = get_disparity(obj_found, image2,
                                   search_box, obj1_extent)
-
     return disparity
 
 
 def save_obj_match(obj_id1, obj_found, disparity, obj_match, params):
-    """Saves disparity values in obj_match matrix. If disparity is greater than
-    MAX_DISPARITY, saves a large number."""
+    """ Saves disparity values in obj_match matrix. If disparity is greater than
+    MAX_DISPARITY, saves a large number. """
     disparity[disparity > params['MAX_DISPARITY']] = LARGE_NUM
     if np.max(obj_found) > 0:
         obj_found = obj_found[obj_found > 0]
@@ -184,8 +181,8 @@ def save_obj_match(obj_id1, obj_found, disparity, obj_match, params):
 
 def locate_allObjects(image1, image2, global_shift, current_objects, record,
                       params):
-    """Matches all the objects in image1 to objects in image2. This is the main
-    function called on a pair of images."""
+    """ Matches all the objects in image1 to objects in image2. This is the
+    main function called on a pair of images. """
     nobj1 = np.max(image1)
     nobj2 = np.max(image2)
 
@@ -213,14 +210,13 @@ def locate_allObjects(image1, image2, global_shift, current_objects, record,
                                       search_box, obj1_extent)
         obj_match = save_obj_match(obj_id1, objs_found, disparity, obj_match,
                                    params)
-
     return obj_match
 
 
 def match_pairs(obj_match, params):
-    """Matches objects into pairs given a disparity matrix and removes bad
-    matches. Bad matches have a disparity greater than the maximum
-    threshold."""
+    """ Matches objects into pairs given a disparity matrix and removes
+    bad matches. Bad matches have a disparity greater than the maximum
+    threshold. """
     pairs = optimize.linear_sum_assignment(obj_match)
 
     for id1 in pairs[0]:
@@ -232,8 +228,8 @@ def match_pairs(obj_match, params):
 
 
 def get_pairs(image1, image2, global_shift, current_objects, record, params):
-    """Given two images, this function identifies the matching objects and
-    pairs them appropriately. See disparity function."""
+    """ Given two images, this function identifies the matching objects and
+    pairs them appropriately. See disparity function. """
     nobj1 = np.max(image1)
     nobj2 = np.max(image2)
 
