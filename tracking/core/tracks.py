@@ -22,6 +22,7 @@ from .objects import get_object_prop, write_tracks
 # Tracking Parameter Defaults
 FIELD_THRESH = 32
 ISO_THRESH = 8
+ISO_SMOOTH = 3
 MIN_SIZE = 32
 NEAR_THRESH = 4
 SEARCH_MARGIN = 8
@@ -41,6 +42,9 @@ FIELD_THRESH : units of 'field' attribute
 ISO_THRESH : units of 'field' attribute
     Used in isolated cell classification. Isolated cells must not be connected
     to any other cell by contiguous pixels above this threshold.
+ISO_SMOOTH : pixels
+    Gaussian smoothing parameter in peak detection preprocessing. See
+    single_max in tint.objects.
 MIN_SIZE : pixels
     The minimum size threshold in pixels for an object to be detected.
 SEARCH_MARGIN : pixels
@@ -107,6 +111,7 @@ class Cell_tracks(object):
                        'MAX_DISPARITY': MAX_DISPARITY,
                        'MAX_SHIFT_DISP': MAX_SHIFT_DISP,
                        'ISO_THRESH': ISO_THRESH,
+                       'ISO_SMOOTH': ISO_SMOOTH,
                        'GS_ALT': GS_ALT}
 
         self.field = field

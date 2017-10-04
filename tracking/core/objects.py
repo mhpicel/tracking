@@ -119,19 +119,20 @@ def check_isolation(raw, filtered, params):
     iso = np.empty(nobj, dtype='bool')
 
     for iso_id in np.arange(nobj_iso) + 1:
-        objects = np.unique(filtered[np.where(iso_filtered == iso_id)])
+        obj_ind = np.where(iso_filtered == iso_id)
+        objects = np.unique(filtered[obj_ind])
         objects = objects[objects != 0]
-        if len(objects) == 1:
+        if len(objects) == 1 and single_max(obj_ind, raw, params):
             iso[objects - 1] = True
         else:
             iso[objects - 1] = False
     return iso
 
 
-def single_max(obj_ind, raw):
+def single_max(obj_ind, raw, params):
     """ Returns True if object has at most one peak. """
     max_proj = np.max(raw, axis=0)
-    smooth = ndimage.filters.gaussian_filter(max_proj, 3)
+    smooth = ndimage.filters.gaussian_filter(max_proj, params['ISO_SMOOTH'])
     padded = np.pad(smooth, 1, mode='constant')
     obj_ind = [axis + 1 for axis in obj_ind]  # adjust for padding
     maxima = 0
