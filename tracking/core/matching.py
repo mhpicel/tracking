@@ -65,13 +65,13 @@ def correct_shift(local_shift, current_objects, obj_id1, global_shift, record,
     updated for the current frame1 and frame2, so the id2s in current_objects
     correspond to the objects in the current frame1. """
     if current_objects is None:
-        last_heads = ()
+        last_heads = None
     else:
         obj_index = current_objects['id2'] == obj_id1
         last_heads = current_objects['last_heads'][obj_index].flatten()
         last_heads = np.round(last_heads * record.interval_ratio, 2)
 
-    if len(last_heads) == 0:
+    if last_heads is None:
         if shifts_disagree(local_shift, global_shift, record, params):
             case = 0
             corrected_shift = global_shift

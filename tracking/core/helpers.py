@@ -106,7 +106,7 @@ class Record(object):
         heads per object per timestep. This information can be used to
         monitor and refine the shift correction algorithm in the
         correct_shift function. """
-        if len(l_heads) == 0:
+        if l_heads is None:
             l_heads = np.ma.array([-999, -999], mask=[True, True])
 
         new_shift_record = pd.DataFrame()
