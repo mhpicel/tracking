@@ -70,6 +70,8 @@ def correct_shift(local_shift, current_objects, obj_id1, global_shift, record,
         obj_index = current_objects['id2'] == obj_id1
         last_heads = current_objects['last_heads'][obj_index].flatten()
         last_heads = np.round(last_heads * record.interval_ratio, 2)
+        if len(last_heads) == 0:
+            last_heads = None
 
     if last_heads is None:
         if shifts_disagree(local_shift, global_shift, record, params):

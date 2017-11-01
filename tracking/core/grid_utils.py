@@ -16,8 +16,9 @@ from scipy import ndimage
 
 def parse_grid_datetime(grid_obj):
     """ Obtains datetime object from pyart grid_object. """
-    date = grid_obj.time['units'][14:24]
-    time = grid_obj.time['units'][25:-1]
+    dt_string = grid_obj.time['units'].split(' ')[-1]
+    date = dt_string[:10]
+    time = dt_string[11:19]
     dt = datetime.datetime.strptime(date + ' ' + time, '%Y-%m-%d %H:%M:%S')
     return dt
 

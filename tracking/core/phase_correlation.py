@@ -26,8 +26,12 @@ def get_ambient_flow(obj_extent, img1, img2, params):
     col_ub = np.int(col_ub)
 
     dims = img1.shape
-    if row_lb <= 0 or col_lb <= 0 or row_ub > dims[0] or col_ub > dims[1]:
-        return None
+#    if row_lb <= 0 or col_lb <= 0 or row_ub > dims[0] or col_ub > dims[1]:
+#        return None
+    row_lb = np.max([row_lb, 0])
+    row_ub = np.min([row_ub, dims[0]])
+    col_lb = np.max([col_lb, 0])
+    col_ub = np.max([col_ub, dims[1]])
 
     flow_region1 = np.copy(img1[row_lb:row_ub+1, col_lb:col_ub+1])
     flow_region2 = np.copy(img2[row_lb:row_ub+1, col_lb:col_ub+1])
