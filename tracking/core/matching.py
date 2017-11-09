@@ -138,18 +138,12 @@ def check_search_box(search_box, img_dims):
 def get_disparity(obj_found, image2, search_box, obj1_extent):
     """ Computes disparities for objects in obj_found. """
     dist_pred = np.empty(0)
-    # dist_actual = np.empty(0)
     change = np.empty(0)
     for target_obj in obj_found:
         target_extent = get_obj_extent(image2, target_obj)
         euc_dist = euclidean_dist(target_extent['obj_center'],
                                   search_box['center_pred'])
         dist_pred = np.append(dist_pred, euc_dist)
-
-        # euc_dist = euclidean_dist(target_extent['obj_center'],
-        #                           obj1_extent['obj_center'])
-        # dist_actual = np.append(dist_actual, euc_dist)
-
         size_changed = get_sizeChange(target_extent['obj_area'],
                                       obj1_extent['obj_area'])
         change = np.append(change, size_changed)
