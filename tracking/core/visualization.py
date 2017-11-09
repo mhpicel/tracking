@@ -15,7 +15,7 @@ import pyart
 from .grid_utils import get_grid_alt
 
 
-def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
+def animate(tobj, grids, outfile_name, isolated_only=False, fps=1):
     """
     Creates gif animation of tracked cells.
 
@@ -58,18 +58,12 @@ def animate(tobj, grids, outfile_name, arrows=False, isolation=False, fps=1):
             frame_tracks = tobj.tracks.loc[nframe]
             for ind, uid in enumerate(frame_tracks.index):
 
-                if isolation and not frame_tracks['isolated'].iloc[ind]:
+                if isolated_only and not frame_tracks['isolated'].iloc[ind]:
                     continue
                 x = frame_tracks['grid_x'].iloc[ind]*grid_size[2]
                 y = frame_tracks['grid_y'].iloc[ind]*grid_size[1]
                 ax.annotate(uid, (x, y), fontsize=20)
-                if arrows and ((nframe, uid) in tobj.record.shifts.index):
-                    shift = tobj.record.shifts \
-                        .loc[nframe, uid]['corrected']
-                    shift = shift * grid_size[1:]
-                    ax.arrow(x, y, shift[1], shift[0],
-                             head_width=3*grid_size[1],
-                             head_length=6*grid_size[1])
+
         del grid, enum_grid, display, ax, frame_tracks
         gc.collect()
 
