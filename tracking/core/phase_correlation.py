@@ -26,8 +26,7 @@ def get_ambient_flow(obj_extent, img1, img2, params):
     col_ub = np.int(col_ub)
 
     dims = img1.shape
-#    if row_lb <= 0 or col_lb <= 0 or row_ub > dims[0] or col_ub > dims[1]:
-#        return None
+
     row_lb = np.max([row_lb, 0])
     row_ub = np.min([row_ub, dims[0]])
     col_lb = np.max([col_lb, 0])
@@ -41,9 +40,9 @@ def get_ambient_flow(obj_extent, img1, img2, params):
     return fft_flowvectors(flow_region1, flow_region2)
 
 
-def fft_flowvectors(im1, im2):
+def fft_flowvectors(im1, im2, global_shift=False):
     """ Estimates flow vectors in two images using cross covariance. """
-    if (np.max(im1) == 0) or (np.max(im2) == 0):
+    if not global_shift and (np.max(im1) == 0) or (np.max(im2) == 0):
         return None
 
     crosscov = fft_crosscov(im1, im2)
@@ -93,7 +92,7 @@ def get_global_shift(im1, im2, params):
     if im2 is None:
         return None
     magnitude = params['MAX_FLOW_MAG']
-    shift = fft_flowvectors(im1, im2)
+    shift = fft_flowvectors(im1, im2, global_shift=True)
     shift[shift > magnitude] = magnitude
     shift[shift < -magnitude] = -magnitude
     return shift
