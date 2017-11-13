@@ -42,7 +42,7 @@ def get_ambient_flow(obj_extent, img1, img2, params):
 
 def fft_flowvectors(im1, im2, global_shift=False):
     """ Estimates flow vectors in two images using cross covariance. """
-    if not global_shift and (np.max(im1) == 0) or (np.max(im2) == 0):
+    if not global_shift and (np.max(im1) == 0 or np.max(im2) == 0):
         return None
 
     crosscov = fft_crosscov(im1, im2)
