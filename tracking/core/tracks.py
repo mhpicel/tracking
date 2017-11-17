@@ -12,7 +12,7 @@ import datetime
 import numpy as np
 import pandas as pd
 
-from .grid_utils import get_grid_size, extract_grid_data
+from .grid_utils import get_grid_size, get_radar_info, extract_grid_data
 from .helpers import Record, Counter
 from .phase_correlation import get_global_shift
 from .matching import get_pairs
@@ -116,6 +116,7 @@ class Cell_tracks(object):
 
         self.field = field
         self.grid_size = None
+        self.radar_info = None
         self.last_grid = None
         self.counter = None
         self.record = None
@@ -153,6 +154,7 @@ class Cell_tracks(object):
             # tracks object being initialized
             grid_obj2 = next(grids)
             self.grid_size = get_grid_size(grid_obj2)
+            self.radar_info = get_radar_info(grid_obj2)
             self.counter = Counter()
             self.record = Record(grid_obj2)
         else:

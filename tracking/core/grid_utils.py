@@ -34,6 +34,14 @@ def get_grid_size(grid_obj):
     return np.array([z_size, y_size, x_size])
 
 
+def get_radar_info(grid_obj):
+    radar_lon = grid_obj.radar_longitude['data'][0]
+    radar_lat = grid_obj.radar_latitude['data'][0]
+    info = {'radar_lon': radar_lon,
+            'radar_lat': radar_lat}
+    return info
+
+
 def get_grid_alt(grid_size, alt_meters=1500):
     """ Returns z-index closest to alt_meters. """
     return np.int(np.round(alt_meters/grid_size[0]))
