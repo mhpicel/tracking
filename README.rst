@@ -1,3 +1,8 @@
+NOTE:
+=====
+If you are interested in using this software, please see the official release
+here: https://github.com/openradar/TINT
+
 Tracking
 ========
 
